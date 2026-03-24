@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { Plus, X, ChevronDown, ChevronRight, Edit2, Download, MessageSquare, Send, Reply, Trash } from 'lucide-react';
+import { Plus, X, ChevronDown, ChevronRight, Edit2, Download, MessageSquare, Send, Reply, Trash, Info } from 'lucide-react';
 
 const Clients: React.FC = () => {
   const [clients, setClients] = useState<any[]>([]);
@@ -15,13 +15,21 @@ const Clients: React.FC = () => {
   
   // Modals state
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [isEditClientModalOpen, setIsEditClientModalOpen] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isEditTaskModalOpen, setIsEditTaskModalOpen] = useState(false);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
   
   const [exportClientId, setExportClientId] = useState<number | null>(null);
+  const [selectedClient, setSelectedClient] = useState<any>(null);
   const [selectedTask, setSelectedTask] = useState<any>(null);
+
+  const openInfo = (client: any) => {
+    setSelectedClient(client);
+    setIsInfoModalOpen(true);
+  };
 
   // Comments state
   const [comments, setComments] = useState<any[]>([]);
@@ -30,6 +38,14 @@ const Clients: React.FC = () => {
 
   const [exportOptions, setExportOptions] = useState({
     clientName: true,
+    zone: true,
+    clientLocation: true,
+    poc1: true,
+    poc2: true,
+    licenseUat: true,
+    licenseProd: true,
+    uatVersion: true,
+    prodVersion: true,
     databaseType: true,
     databaseVersion: true,
     clientTags: true,
@@ -42,7 +58,12 @@ const Clients: React.FC = () => {
     taskRemarks: true
   });
 
-  const [clientFormData, setClientFormData] = useState({ name: '', database_type: 'MS SQL', database_version: '', remarks: '', tags: '' });
+  const [clientFormData, setClientFormData] = useState({ 
+    name: '', database_type: 'MS SQL', database_version: '', 
+    zone: '', client_location: '', poc_1: '', poc_2: '', 
+    license_uat: '', license_prod: '', uat_version: '', prod_version: '',
+    remarks: '', tags: '' 
+  });
   const [editTaskFormData, setEditTaskFormData] = useState({ status: '', assigned_to: '', build_version: '', remarks: '' });
   const [createTaskFormData, setCreateTaskFormData] = useState({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0 });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,7 +140,13 @@ const Clients: React.FC = () => {
       (c.database_type && c.database_type.toLowerCase().includes(q)) ||
       (c.database_version && c.database_version.toLowerCase().includes(q)) ||
       (c.remarks && c.remarks.toLowerCase().includes(q)) ||
-      (c.tags && c.tags.toLowerCase().includes(q))
+      (c.tags && c.tags.toLowerCase().includes(q)) ||
+      (c.zone && c.zone.toLowerCase().includes(q)) ||
+      (c.client_location && c.client_location.toLowerCase().includes(q)) ||
+      (c.poc_1 && c.poc_1.toLowerCase().includes(q)) ||
+      (c.poc_2 && c.poc_2.toLowerCase().includes(q)) ||
+      (c.uat_version && c.uat_version.toLowerCase().includes(q)) ||
+      (c.prod_version && c.prod_version.toLowerCase().includes(q))
     );
   });
 
@@ -129,11 +156,47 @@ const Clients: React.FC = () => {
     try {
       await api.post('/clients/', clientFormData);
       setIsClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', remarks: '', tags: '' });
+      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
       fetchData();
     } catch (err) {
       console.error(err);
       alert('Failed to create client');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openEditClient = (client: any) => {
+    setSelectedClient(client);
+    setClientFormData({
+      name: client.name || '',
+      database_type: client.database_type || 'MS SQL',
+      database_version: client.database_version || '',
+      zone: client.zone || '',
+      client_location: client.client_location || '',
+      poc_1: client.poc_1 || '',
+      poc_2: client.poc_2 || '',
+      license_uat: client.license_uat || '',
+      license_prod: client.license_prod || '',
+      uat_version: client.uat_version || '',
+      prod_version: client.prod_version || '',
+      remarks: client.remarks || '',
+      tags: client.tags || ''
+    });
+    setIsEditClientModalOpen(true);
+  };
+
+  const handleEditClientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await api.patch(`/clients/${selectedClient.id}`, clientFormData);
+      setIsEditClientModalOpen(false);
+      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update client');
     } finally {
       setIsSubmitting(false);
     }
@@ -235,65 +298,89 @@ const Clients: React.FC = () => {
   const handleExportCSV = () => {
     try {
       const headers = [];
-      if (exportOptions.clientName) headers.push("Client Name");
-      if (exportOptions.databaseType) headers.push("Database Type");
-      if (exportOptions.databaseVersion) headers.push("Database Version");
-      if (exportOptions.clientTags) headers.push("Tags");
-      if (exportOptions.clientRemarks) headers.push("Client Remarks");
-      if (exportOptions.taskName) headers.push("Tracking Phase");
-      if (exportOptions.taskBuildVersion) headers.push("Build Version");
-      if (exportOptions.taskDueDate) headers.push("Due Date");
-      if (exportOptions.taskPOC) headers.push("Point of Contact");
-      if (exportOptions.taskStatus) headers.push("Status");
-      if (exportOptions.taskRemarks) headers.push("Task Remarks");
-      
-      const csvRows = [];
-      csvRows.push(headers.join(","));
+    if (exportOptions.clientName) headers.push("Client Name");
+    if (exportOptions.zone) headers.push("Zone");
+    if (exportOptions.clientLocation) headers.push("Location");
+    if (exportOptions.poc1) headers.push("POC 1");
+    if (exportOptions.poc2) headers.push("POC 2");
+    if (exportOptions.licenseUat) headers.push("License (UAT)");
+    if (exportOptions.licenseProd) headers.push("License (Prod)");
+    if (exportOptions.uatVersion) headers.push("UAT Version");
+    if (exportOptions.prodVersion) headers.push("Prod Version");
+    if (exportOptions.databaseType) headers.push("Database Type");
+    if (exportOptions.databaseVersion) headers.push("Database Version");
+    if (exportOptions.clientTags) headers.push("Tags");
+    if (exportOptions.clientRemarks) headers.push("Client Remarks");
+    if (exportOptions.taskName) headers.push("Tracking Phase");
+    if (exportOptions.taskBuildVersion) headers.push("Build Version");
+    if (exportOptions.taskDueDate) headers.push("Due Date");
+    if (exportOptions.taskPOC) headers.push("Point of Contact");
+    if (exportOptions.taskStatus) headers.push("Status");
+    if (exportOptions.taskRemarks) headers.push("Task Remarks");
+    
+    const csvRows = [];
+    csvRows.push(headers.join(","));
 
-      const clientsToExport = exportClientId 
-        ? clients.filter(c => c.id === exportClientId)
-        : filteredClients;
+    const clientsToExport = exportClientId 
+      ? clients.filter(c => c.id === exportClientId)
+      : filteredClients;
 
-      const escapeCsv = (val: any) => {
-        if (val === null || val === undefined) return '""';
-        const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
-        return `"${str}"`;
-      };
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
+      return `"${str}"`;
+    };
 
-      clientsToExport.forEach(c => {
-        const clientTasks = getClientTasks(c.id);
-        if (clientTasks.length === 0) {
+    clientsToExport.forEach(c => {
+      const clientTasks = getClientTasks(c.id);
+      if (clientTasks.length === 0) {
+        const row = [];
+        if (exportOptions.clientName) row.push(escapeCsv(c.name));
+        if (exportOptions.zone) row.push(escapeCsv(c.zone));
+        if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
+        if (exportOptions.poc1) row.push(escapeCsv(c.poc_1));
+        if (exportOptions.poc2) row.push(escapeCsv(c.poc_2));
+        if (exportOptions.licenseUat) row.push(escapeCsv(c.license_uat));
+        if (exportOptions.licenseProd) row.push(escapeCsv(c.license_prod));
+        if (exportOptions.uatVersion) row.push(escapeCsv(c.uat_version));
+        if (exportOptions.prodVersion) row.push(escapeCsv(c.prod_version));
+        if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
+        if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
+        if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
+        if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
+        if (exportOptions.taskName) row.push('""');
+        if (exportOptions.taskBuildVersion) row.push('""');
+        if (exportOptions.taskDueDate) row.push('""');
+        if (exportOptions.taskPOC) row.push('""');
+        if (exportOptions.taskStatus) row.push('""');
+        if (exportOptions.taskRemarks) row.push('""');
+        csvRows.push(row.join(","));
+      } else {
+        clientTasks.forEach(t => {
           const row = [];
           if (exportOptions.clientName) row.push(escapeCsv(c.name));
+          if (exportOptions.zone) row.push(escapeCsv(c.zone));
+          if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
+          if (exportOptions.poc1) row.push(escapeCsv(c.poc_1));
+          if (exportOptions.poc2) row.push(escapeCsv(c.poc_2));
+          if (exportOptions.licenseUat) row.push(escapeCsv(c.license_uat));
+          if (exportOptions.licenseProd) row.push(escapeCsv(c.license_prod));
+          if (exportOptions.uatVersion) row.push(escapeCsv(c.uat_version));
+          if (exportOptions.prodVersion) row.push(escapeCsv(c.prod_version));
           if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
           if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
           if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
           if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-          if (exportOptions.taskName) row.push('""');
-          if (exportOptions.taskBuildVersion) row.push('""');
-          if (exportOptions.taskDueDate) row.push('""');
-          if (exportOptions.taskPOC) row.push('""');
-          if (exportOptions.taskStatus) row.push('""');
-          if (exportOptions.taskRemarks) row.push('""');
+          if (exportOptions.taskName) row.push(escapeCsv(t.name));
+          if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
+          if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
+          if (exportOptions.taskPOC) row.push(escapeCsv(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
+          if (exportOptions.taskStatus) row.push(escapeCsv(t.status));
+          if (exportOptions.taskRemarks) row.push(escapeCsv(t.remarks));
           csvRows.push(row.join(","));
-        } else {
-          clientTasks.forEach(t => {
-            const row = [];
-            if (exportOptions.clientName) row.push(escapeCsv(c.name));
-            if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
-            if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
-            if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
-            if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-            if (exportOptions.taskName) row.push(escapeCsv(t.name));
-            if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
-            if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
-            if (exportOptions.taskPOC) row.push(escapeCsv(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
-            if (exportOptions.taskStatus) row.push(escapeCsv(t.status));
-            if (exportOptions.taskRemarks) row.push(escapeCsv(t.remarks));
-            csvRows.push(row.join(","));
-          });
-        }
-      });
+        });
+      }
+    });
 
       const csvString = csvRows.join("\n");
       const blob = new Blob(["\ufeff", csvString], { type: 'text/csv;charset=utf-8;' });
@@ -412,7 +499,25 @@ const Clients: React.FC = () => {
                         </span>
                       ) : 'No Tasks'}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openInfo(c); }}
+                        style={{ background: 'none', border: 'none', color: '#111827', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="View Details"
+                      >
+                        <Info size={16} />
+                      </button>
+                      {currentUser?.role !== 'Engineer' && (
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openEditClient(c); }}
+                          style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="Edit Client"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                      )}
                       <button 
                         type="button"
                         onClick={(e) => { e.stopPropagation(); openExportModal(c.id); }}
@@ -535,6 +640,23 @@ const Clients: React.FC = () => {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
+                  <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                    <option value="">-- Select Zone --</option>
+                    <option value="North">North</option>
+                    <option value="South">South</option>
+                    <option value="East">East</option>
+                    <option value="West">West</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location (City Name)</label>
+                  <input type="text" value={clientFormData.client_location} onChange={e => setClientFormData({...clientFormData, client_location: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
                   <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
                     <option value="">-- None --</option>
@@ -550,6 +672,40 @@ const Clients: React.FC = () => {
                   <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
+                  <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
+                  <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
+                  <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
+                  <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
+                  <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
+                  <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
                 <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
@@ -565,6 +721,179 @@ const Clients: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Client Edit Modal */}
+      {isEditClientModalOpen && selectedClient && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
+            <button type="button" onClick={() => setIsEditClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Edit Client: {selectedClient.name}</h2>
+            <form onSubmit={handleEditClientSubmit}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
+                <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
+                  <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                    <option value="">-- Select Zone --</option>
+                    <option value="North">North</option>
+                    <option value="South">South</option>
+                    <option value="East">East</option>
+                    <option value="West">West</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location (City Name)</label>
+                  <input type="text" value={clientFormData.client_location} onChange={e => setClientFormData({...clientFormData, client_location: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
+                  <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                    <option value="">-- None --</option>
+                    <option value="MS SQL">MS SQL</option>
+                    <option value="MySQL">MySQL</option>
+                    <option value="Oracle">Oracle</option>
+                    <option value="PostgreSQL">PostgreSQL</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
+                  <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
+                  <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
+                  <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
+                  <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
+                  <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
+                  <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
+                  <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
+                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
+                <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                <button type="button" onClick={() => setIsEditClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                  {isSubmitting ? 'Updating...' : 'Update Client'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Client Info Modal */}
+      {isInfoModalOpen && selectedClient && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '700px', padding: '2rem', position: 'relative' }}>
+            <button type="button" onClick={() => setIsInfoModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', color: '#111827', borderBottom: '2px solid #f3f4f6', paddingBottom: '0.75rem' }}>
+              Client Details: {selectedClient.name}
+            </h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+              <div>
+                <h3 style={{ fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em', marginBottom: '1rem' }}>Location & Contacts</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Zone</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.zone || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Location (City)</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.client_location || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Primary POC</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.poc_1 || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Secondary POC</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.poc_2 || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 style={{ fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em', marginBottom: '1rem' }}>Versions & Licensing</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Production Version</label>
+                    <span style={{ fontSize: '0.875rem', color: '#046c4e', fontWeight: 600 }}>{selectedClient.prod_version || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>UAT Version</label>
+                    <span style={{ fontSize: '0.875rem', color: '#1a56db', fontWeight: 600 }}>{selectedClient.uat_version || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>License (UAT)</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.license_uat || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>License (Prod)</label>
+                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.license_prod || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Remarks</label>
+              <div style={{ fontSize: '0.875rem', color: '#4b5563', background: '#f9fafb', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', minHeight: '60px' }}>
+                {selectedClient.remarks || 'No remarks provided.'}
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem' }}>
+              <button onClick={() => setIsInfoModalOpen(false)} style={{ padding: '0.5rem 1.5rem', background: '#111827', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

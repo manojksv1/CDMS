@@ -5,8 +5,6 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
-import Locations from './pages/Locations';
-import Tasks from './pages/Tasks';
 import Users from './pages/Users';
 
 // Protected Route Component

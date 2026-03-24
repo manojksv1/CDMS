@@ -52,7 +52,7 @@ const Locations: React.FC = () => {
     }
   };
 
-  const getClientName = (id: int) => {
+  const getClientName = (id: number) => {
     const client = clients.find(c => c.id === id);
     return client ? client.name : `Client #${id}`;
   };

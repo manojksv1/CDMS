@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Users, MapPin, CheckSquare, LogOut, Shield } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Shield } from 'lucide-react';
 import './Layout.css';
 
 const Layout: React.FC = () => {
