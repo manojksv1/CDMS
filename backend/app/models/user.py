@@ -1,0 +1,16 @@
+from sqlalchemy import Column, Integer, String, Enum
+from app.core.database import Base
+import enum
+
+class UserRole(str, enum.Enum):
+    ADMIN = "Admin"
+    MANAGER = "Manager"
+    ENGINEER = "Engineer"
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False, unique=True)
+    role = Column(Enum(UserRole), nullable=False)
+    hashed_password = Column(String, nullable=False)
