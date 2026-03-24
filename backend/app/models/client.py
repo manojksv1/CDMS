@@ -10,3 +10,4 @@ class Client(Base):
     database_type = Column(String, nullable=True)
     database_version = Column(String, nullable=True)
     remarks = Column(String, nullable=True)
+    tags = Column(String, nullable=True)

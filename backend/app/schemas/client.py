@@ -7,6 +7,7 @@ class ClientBase(BaseModel):
     database_type: Optional[str] = None
     database_version: Optional[str] = None
     remarks: Optional[str] = None
+    tags: Optional[str] = None
 
 class ClientCreate(ClientBase):
     pass

@@ -19,10 +19,11 @@ const Clients: React.FC = () => {
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
 
-  const [clientFormData, setClientFormData] = useState({ name: '', database_type: 'MS SQL', database_version: '', remarks: '' });
+  const [clientFormData, setClientFormData] = useState({ name: '', database_type: 'MS SQL', database_version: '', remarks: '', tags: '' });
   const [editTaskFormData, setEditTaskFormData] = useState({ status: '', assigned_to: '', build_version: '', remarks: '' });
   const [createTaskFormData, setCreateTaskFormData] = useState({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0 });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -45,13 +46,24 @@ const Clients: React.FC = () => {
     }
   };
 
+  const filteredClients = clients.filter(c => {
+    const q = searchQuery.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.database_type && c.database_type.toLowerCase().includes(q)) ||
+      (c.database_version && c.database_version.toLowerCase().includes(q)) ||
+      (c.remarks && c.remarks.toLowerCase().includes(q)) ||
+      (c.tags && c.tags.toLowerCase().includes(q))
+    );
+  });
+
   const handleClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       await api.post('/clients/', clientFormData);
       setIsClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', remarks: '' });
+      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', remarks: '', tags: '' });
       fetchData();
     } catch (err) {
       console.error(err);
@@ -156,16 +168,25 @@ const Clients: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>Clients & Tracking Overview</h1>
-        {currentUser?.role !== 'Engineer' && (
-          <button 
-            onClick={() => setIsClientModalOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-          >
-            <Plus size={16} /> Add Client
-          </button>
-        )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Clients & Tracking Overview</h1>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <input 
+            type="text" 
+            placeholder="Search by Client, DB, Remarks..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px' }}
+          />
+          {currentUser?.role !== 'Engineer' && (
+            <button 
+              onClick={() => setIsClientModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+            >
+              <Plus size={16} /> Add Client
+            </button>
+          )}
+        </div>
       </div>
       
       <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
@@ -175,12 +196,13 @@ const Clients: React.FC = () => {
               <th style={{ width: '40px' }}></th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Client Name</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Database</th>
+              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tags</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tasks Status</th>
             </tr>
           </thead>
           <tbody>
-            {clients.map((c) => {
+            {filteredClients.map((c) => {
               const clientTasks = getClientTasks(c.id);
               const isExpanded = expandedClient === c.id;
               const completedTasks = clientTasks.filter(t => t.status === 'COMPLETED').length;
@@ -204,6 +226,17 @@ const Clients: React.FC = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                           <span style={{ background: '#e5e7eb', padding: '0.125rem 0.5rem', borderRadius: '4px', width: 'fit-content' }}>{c.database_type}</span>
                           {c.database_version && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>v{c.database_version}</span>}
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
+                      {c.tags ? (
+                        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                          {c.tags.split(',').map((tag: string, i: number) => (
+                            <span key={i} style={{ background: '#def7ec', color: '#03543f', padding: '0.125rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500 }}>
+                              {tag.trim()}
+                            </span>
+                          ))}
                         </div>
                       ) : '-'}
                     </td>
@@ -338,6 +371,11 @@ const Clients: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
                   <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019, 15.0" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags (comma-separated)</label>
+                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP, Retail" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
 
               <div style={{ marginBottom: '1.5rem' }}>
