@@ -19,6 +19,7 @@ const Clients: React.FC = () => {
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
+  
   const [exportClientId, setExportClientId] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<any>(null);
 
@@ -26,49 +27,6 @@ const Clients: React.FC = () => {
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<number | null>(null);
-
-  const fetchComments = async (taskId: number) => {
-    try {
-      const res = await api.get(`/comments/task/${taskId}`);
-      setComments(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
-    try {
-      await api.post('/comments/', {
-        task_id: selectedTask.id,
-        content: newComment,
-        parent_id: replyTo
-      });
-      setNewComment('');
-      setReplyTo(null);
-      fetchComments(selectedTask.id);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteComment = async (id: number) => {
-    if (window.confirm("Delete this comment?")) {
-      try {
-        await api.delete(`/comments/${id}`);
-        fetchComments(selectedTask.id);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
-
-  const openComments = (task: any) => {
-    setSelectedTask(task);
-    fetchComments(task.id);
-    setIsCommentsModalOpen(true);
-  };
 
   const [exportOptions, setExportOptions] = useState({
     clientName: true,
@@ -107,8 +65,51 @@ const Clients: React.FC = () => {
       setTasks(taskRes.data);
       setUsers(userRes.data);
     } catch (err) {
+      console.error("Fetch data error:", err);
+    }
+  };
+
+  const fetchComments = async (taskId: number) => {
+    try {
+      const res = await api.get(`/comments/task/${taskId}`);
+      setComments(res.data);
+    } catch (err) {
+      console.error("Fetch comments error:", err);
+    }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    try {
+      await api.post('/comments/', {
+        task_id: selectedTask.id,
+        content: newComment,
+        parent_id: replyTo
+      });
+      setNewComment('');
+      setReplyTo(null);
+      fetchComments(selectedTask.id);
+    } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleDeleteComment = async (id: number) => {
+    if (window.confirm("Delete this comment?")) {
+      try {
+        await api.delete(`/comments/${id}`);
+        fetchComments(selectedTask.id);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
+  const openComments = (task: any) => {
+    setSelectedTask(task);
+    fetchComments(task.id);
+    setIsCommentsModalOpen(true);
   };
 
   const filteredClients = clients.filter(c => {
@@ -147,7 +148,6 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // 1. Find or create location for this client
       let locationId;
       const clientLocation = locations.find(l => l.client_id === createTaskFormData.client_id);
       if (clientLocation) {
@@ -157,7 +157,6 @@ const Clients: React.FC = () => {
         locationId = newLoc.data.id;
       }
 
-      // 2. Create the task
       const newTask = await api.post('/tasks/', {
         name: createTaskFormData.name,
         due_date: createTaskFormData.due_date,
@@ -166,7 +165,6 @@ const Clients: React.FC = () => {
         location_id: locationId
       });
 
-      // 3. Assign user if selected
       if (createTaskFormData.assigned_to) {
         await api.patch(`/tasks/${newTask.data.id}/assign`, { assigned_to: parseInt(createTaskFormData.assigned_to) });
       }
@@ -196,18 +194,15 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Update general fields
       if (editTaskFormData.build_version !== (selectedTask.build_version || '') || editTaskFormData.remarks !== (selectedTask.remarks || '')) {
         await api.patch(`/tasks/${selectedTask.id}`, { 
           build_version: editTaskFormData.build_version,
           remarks: editTaskFormData.remarks
         });
       }
-      // Update status
       if (editTaskFormData.status !== selectedTask.status) {
         await api.patch(`/tasks/${selectedTask.id}/status`, { status: editTaskFormData.status });
       }
-      // Update Assignee
       if (editTaskFormData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'Engineer') {
         await api.patch(`/tasks/${selectedTask.id}/assign`, { 
           assigned_to: editTaskFormData.assigned_to ? parseInt(editTaskFormData.assigned_to) : null 
@@ -231,102 +226,115 @@ const Clients: React.FC = () => {
     return tasks.filter(t => clientLocs.includes(t.location_id));
   };
 
+  const openExportModal = (clientId: number | null = null) => {
+    console.log("Opening Export Modal for client:", clientId);
+    setExportClientId(clientId);
+    setIsExportModalOpen(true);
+  };
+
   const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    
-    // Build header
-    const headers = [];
-    if (exportOptions.clientName) headers.push("Client Name");
-    if (exportOptions.databaseType) headers.push("Database Type");
-    if (exportOptions.databaseVersion) headers.push("Database Version");
-    if (exportOptions.clientTags) headers.push("Tags");
-    if (exportOptions.clientRemarks) headers.push("Client Remarks");
-    if (exportOptions.taskName) headers.push("Tracking Phase");
-    if (exportOptions.taskBuildVersion) headers.push("Build Version");
-    if (exportOptions.taskDueDate) headers.push("Due Date");
-    if (exportOptions.taskPOC) headers.push("Point of Contact");
-    if (exportOptions.taskStatus) headers.push("Status");
-    if (exportOptions.taskRemarks) headers.push("Task Remarks");
-    
-    csvContent += headers.join(",") + "\n";
-
-    const clientsToExport = exportClientId 
-      ? clients.filter(c => c.id === exportClientId)
-      : filteredClients;
-
-    // Add rows
-    clientsToExport.forEach(c => {
-      const clientTasks = getClientTasks(c.id);
+    try {
+      const headers = [];
+      if (exportOptions.clientName) headers.push("Client Name");
+      if (exportOptions.databaseType) headers.push("Database Type");
+      if (exportOptions.databaseVersion) headers.push("Database Version");
+      if (exportOptions.clientTags) headers.push("Tags");
+      if (exportOptions.clientRemarks) headers.push("Client Remarks");
+      if (exportOptions.taskName) headers.push("Tracking Phase");
+      if (exportOptions.taskBuildVersion) headers.push("Build Version");
+      if (exportOptions.taskDueDate) headers.push("Due Date");
+      if (exportOptions.taskPOC) headers.push("Point of Contact");
+      if (exportOptions.taskStatus) headers.push("Status");
+      if (exportOptions.taskRemarks) headers.push("Task Remarks");
       
+      const csvRows = [];
+      csvRows.push(headers.join(","));
+
+      const clientsToExport = exportClientId 
+        ? clients.filter(c => c.id === exportClientId)
+        : filteredClients;
+
       const escapeCsv = (val: any) => {
         if (val === null || val === undefined) return '""';
-        const str = String(val).replace(/"/g, '""');
+        const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
         return `"${str}"`;
       };
 
-      if (clientTasks.length === 0) {
-        const row = [];
-        if (exportOptions.clientName) row.push(escapeCsv(c.name));
-        if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
-        if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
-        if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
-        if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-        if (exportOptions.taskName) row.push('""');
-        if (exportOptions.taskBuildVersion) row.push('""');
-        if (exportOptions.taskDueDate) row.push('""');
-        if (exportOptions.taskPOC) row.push('""');
-        if (exportOptions.taskStatus) row.push('""');
-        if (exportOptions.taskRemarks) row.push('""');
-        csvContent += row.join(",") + "\n";
-      } else {
-        clientTasks.forEach(t => {
+      clientsToExport.forEach(c => {
+        const clientTasks = getClientTasks(c.id);
+        if (clientTasks.length === 0) {
           const row = [];
           if (exportOptions.clientName) row.push(escapeCsv(c.name));
           if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
           if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
           if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
           if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-          if (exportOptions.taskName) row.push(escapeCsv(t.name));
-          if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
-          if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
-          if (exportOptions.taskPOC) row.push(escapeCsv(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
-          if (exportOptions.taskStatus) row.push(escapeCsv(t.status));
-          if (exportOptions.taskRemarks) row.push(escapeCsv(t.remarks));
-          csvContent += row.join(",") + "\n";
-        });
-      }
-    });
+          if (exportOptions.taskName) row.push('""');
+          if (exportOptions.taskBuildVersion) row.push('""');
+          if (exportOptions.taskDueDate) row.push('""');
+          if (exportOptions.taskPOC) row.push('""');
+          if (exportOptions.taskStatus) row.push('""');
+          if (exportOptions.taskRemarks) row.push('""');
+          csvRows.push(row.join(","));
+        } else {
+          clientTasks.forEach(t => {
+            const row = [];
+            if (exportOptions.clientName) row.push(escapeCsv(c.name));
+            if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
+            if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
+            if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
+            if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
+            if (exportOptions.taskName) row.push(escapeCsv(t.name));
+            if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
+            if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
+            if (exportOptions.taskPOC) row.push(escapeCsv(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
+            if (exportOptions.taskStatus) row.push(escapeCsv(t.status));
+            if (exportOptions.taskRemarks) row.push(escapeCsv(t.remarks));
+            csvRows.push(row.join(","));
+          });
+        }
+      });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "cdms_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setIsExportModalOpen(false);
+      const csvString = csvRows.join("\n");
+      const blob = new Blob(["\ufeff", csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exportClientId ? `cdms_export_client_${exportClientId}.csv` : "cdms_full_export.csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setIsExportModalOpen(false);
+    } catch (error) {
+      console.error("Export failed", error);
+      alert("Failed to generate CSV. Please try again.");
+    }
   };
 
   return (
-    <div>
+    <div style={{ position: 'relative', width: '100%', minHeight: '100%' }}>
+      {/* Header with Search and Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Clients & Tracking Overview</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 10 }}>
           <input 
             type="text" 
             placeholder="Search by Client, DB, Remarks..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px' }}
+            style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px', background: 'white' }}
           />
           <button 
-            onClick={() => openExportModal(null)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#111827', padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+            type="button"
+            onClick={(e) => { e.preventDefault(); openExportModal(null); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#111827', padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap', position: 'relative', zIndex: 11 }}
           >
             <Download size={16} /> Export
           </button>
           {currentUser?.role !== 'Engineer' && (
             <button 
+              type="button"
               onClick={() => setIsClientModalOpen(true)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
             >
@@ -336,6 +344,7 @@ const Clients: React.FC = () => {
         </div>
       </div>
       
+      {/* Main Table */}
       <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -360,6 +369,7 @@ const Clients: React.FC = () => {
                   <tr style={{ borderBottom: '1px solid #e5e7eb', background: isExpanded ? '#f9fafb' : 'white' }}>
                     <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
                       <button 
+                        type="button"
                         onClick={() => setExpandedClient(isExpanded ? null : c.id)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}
                       >
@@ -404,6 +414,7 @@ const Clients: React.FC = () => {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
                       <button 
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); openExportModal(c.id); }}
                         style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                         title="Export Client Data"
@@ -420,6 +431,7 @@ const Clients: React.FC = () => {
                           <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>Tracking Phases</h3>
                           {currentUser?.role !== 'Engineer' && (
                             <button 
+                              type="button"
                               onClick={() => openCreateTask(c.id)}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'white', color: '#1a56db', border: '1px solid #1a56db', padding: '0.375rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}
                             >
@@ -466,13 +478,15 @@ const Clients: React.FC = () => {
                                     </td>
                                     <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', display: 'flex', gap: '0.75rem' }}>
                                       <button 
+                                        type="button"
                                         onClick={() => openComments(t)}
                                         style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                        title="View Comments"
+                                        title="View Discussion"
                                       >
                                         <MessageSquare size={14} />
                                       </button>
                                       <button 
+                                        type="button"
                                         onClick={() => openTaskEdit(t)}
                                         style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                                       >
@@ -497,28 +511,28 @@ const Clients: React.FC = () => {
             })}
             {clients.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>No clients found.</td>
+                <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>No clients found.</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
 
+      {/* --- ALL MODALS BELOW --- */}
+
       {/* Client Create Modal */}
       {isClientModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button onClick={() => setIsClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
               <X size={20} />
             </button>
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Add New Client</h2>
-            
             <form onSubmit={handleClientSubmit}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
                 <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
-              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
@@ -533,20 +547,17 @@ const Clients: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
-                  <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019, 15.0" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
-
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags (comma-separated)</label>
-                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP, Retail" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
+                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
-
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
                 <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
               </div>
-              
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -560,19 +571,17 @@ const Clients: React.FC = () => {
 
       {/* Task Create Modal */}
       {isCreateTaskModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button onClick={() => setIsCreateTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button type="button" onClick={() => setIsCreateTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
               <X size={20} />
             </button>
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Add Tracking Phase</h2>
-            
             <form onSubmit={handleCreateTaskSubmit}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Phase Name *</label>
-                <input required type="text" value={createTaskFormData.name} onChange={e => setCreateTaskFormData({...createTaskFormData, name: e.target.value})} placeholder="e.g. UAT Installation" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                <input required type="text" value={createTaskFormData.name} onChange={e => setCreateTaskFormData({...createTaskFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
-              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Due Date *</label>
@@ -580,11 +589,10 @@ const Clients: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Build Version</label>
-                  <input type="text" value={createTaskFormData.build_version} onChange={e => setCreateTaskFormData({...createTaskFormData, build_version: e.target.value})} placeholder="e.g. CV2025_V1.2.0" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={createTaskFormData.build_version} onChange={e => setCreateTaskFormData({...createTaskFormData, build_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
-
-              <div style={{ marginBottom: '1rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Point of Contact</label>
                 <select value={createTaskFormData.assigned_to} onChange={e => setCreateTaskFormData({...createTaskFormData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
                   <option value="">-- Unassigned --</option>
@@ -593,12 +601,6 @@ const Clients: React.FC = () => {
                   ))}
                 </select>
               </div>
-
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
-                <textarea rows={3} value={createTaskFormData.remarks} onChange={e => setCreateTaskFormData({...createTaskFormData, remarks: e.target.value})} placeholder="Add comments here..." style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
-              </div>
-              
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button type="button" onClick={() => setIsCreateTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -612,13 +614,12 @@ const Clients: React.FC = () => {
 
       {/* Task Edit Modal */}
       {isEditTaskModalOpen && selectedTask && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '400px', padding: '2rem', position: 'relative' }}>
-            <button onClick={() => setIsEditTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
+            <button type="button" onClick={() => setIsEditTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
               <X size={20} />
             </button>
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Update Tracking: {selectedTask.name}</h2>
-            
             <form onSubmit={handleEditTaskSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
@@ -632,12 +633,11 @@ const Clients: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Build Version</label>
-                  <input type="text" value={editTaskFormData.build_version} onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} placeholder="e.g. CV2025_V1.2.0" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={editTaskFormData.build_version} onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
-
               {currentUser?.role !== 'Engineer' && (
-                <div style={{ marginBottom: '1rem' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Point of Contact</label>
                   <select value={editTaskFormData.assigned_to} onChange={e => setEditTaskFormData({...editTaskFormData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
                     <option value="">-- Unassigned --</option>
@@ -647,12 +647,6 @@ const Clients: React.FC = () => {
                   </select>
                 </div>
               )}
-
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
-                <textarea rows={3} value={editTaskFormData.remarks} onChange={e => setEditTaskFormData({...editTaskFormData, remarks: e.target.value})} placeholder="Add comments here..." style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
-              </div>
-              
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button type="button" onClick={() => setIsEditTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -666,33 +660,30 @@ const Clients: React.FC = () => {
 
       {/* Export Modal */}
       {isExportModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button onClick={() => setIsExportModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
               <X size={20} />
             </button>
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Export Data to CSV</h2>
-            
             <div style={{ marginBottom: '1.5rem' }}>
               <p style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#6b7280' }}>Select the fields you want to include in the CSV export:</p>
-              
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 {Object.entries(exportOptions).map(([key, value]) => (
                   <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
                     <input 
                       type="checkbox" 
                       checked={value as boolean} 
-                      onChange={(e) => setExportOptions({...exportOptions, [key]: e.target.checked})}
+                      onChange={(e) => setExportOptions({...exportOptions, [key as keyof typeof exportOptions]: e.target.checked})}
                     />
                     {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                   </label>
                 ))}
               </div>
             </div>
-            
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button onClick={() => setIsExportModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleExportCSV} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+              <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+              <button type="button" onClick={handleExportCSV} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
                 Download CSV
               </button>
             </div>
@@ -700,20 +691,19 @@ const Clients: React.FC = () => {
         </div>
       )}
 
-      {/* Comments Modal */}
+      {/* Discussion Modal */}
       {isCommentsModalOpen && selectedTask && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Discussion</h2>
                 <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>Task: {selectedTask.name}</p>
               </div>
-              <button onClick={() => setIsCommentsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <button type="button" onClick={() => setIsCommentsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
                 <X size={20} />
               </button>
             </div>
-
             <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
               {comments.length === 0 ? (
                 <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem 0' }}>
@@ -728,12 +718,11 @@ const Clients: React.FC = () => {
                 />
               )}
             </div>
-
             <div style={{ padding: '1.5rem', borderTop: '1px solid #e5e7eb', background: '#f9fafb' }}>
               {replyTo && (
                 <div style={{ marginBottom: '0.5rem', fontSize: '0.75rem', color: '#1a56db', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Replying to comment #{replyTo}</span>
-                  <button onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>Cancel</button>
+                  <span>Replying to a comment...</span>
+                  <button type="button" onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>Cancel</button>
                 </div>
               )}
               <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
@@ -741,7 +730,7 @@ const Clients: React.FC = () => {
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Type your message..."
-                  style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db', resize: 'none', fontSize: '0.875rem' }}
+                  style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db', resize: 'none', fontSize: '0.875rem', background: 'white' }}
                   rows={2}
                 />
                 <button 
@@ -755,13 +744,11 @@ const Clients: React.FC = () => {
           </div>
         </div>
       )}
-
     </div>
   );
 };
 
 // --- Sub-components for Comments ---
-
 const CommentList: React.FC<{ 
   comments: any[], 
   onReply: (id: number) => void, 
@@ -780,6 +767,7 @@ const CommentList: React.FC<{
             <div style={{ fontSize: '0.875rem', color: '#374151', marginBottom: '0.5rem' }}>{c.content}</div>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button 
+                type="button"
                 onClick={() => onReply(c.id)}
                 style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 }}
               >
@@ -787,6 +775,7 @@ const CommentList: React.FC<{
               </button>
               {(currentUserId === c.user_id) && (
                 <button 
+                  type="button"
                   onClick={() => onDelete(c.id)}
                   style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 }}
                 >
