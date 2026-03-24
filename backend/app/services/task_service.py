@@ -9,6 +9,9 @@ from datetime import datetime
 def get_tasks(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Task).offset(skip).limit(limit).all()
 
+def get_tasks_by_user(db: Session, user_id: int):
+    return db.query(Task).filter(Task.assigned_to == user_id).all()
+
 def get_tasks_by_location(db: Session, location_id: int):
     return db.query(Task).filter(Task.location_id == location_id).all()
 

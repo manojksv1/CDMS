@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.schemas.location import LocationCreate, LocationUpdate, LocationResponse
 from app.services import location_service
 from app.api.deps import get_current_user, get_current_active_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -17,6 +17,8 @@ def create_location(location: LocationCreate, db: Session = Depends(get_db), cur
 def read_locations(client_id: Optional[int] = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if client_id:
         return location_service.get_locations_by_client(db, client_id=client_id)
+    if current_user.role == UserRole.ENGINEER:
+        return location_service.get_locations_by_user(db, current_user.id)
     return location_service.get_locations(db, skip=skip, limit=limit)
 
 @router.get("/{location_id}", response_model=LocationResponse)

@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from app.services import client_service
 from app.api.deps import get_current_user, get_current_active_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -15,6 +15,8 @@ def create_client(client: ClientCreate, db: Session = Depends(get_db), current_u
 
 @router.get("/", response_model=List[ClientResponse])
 def read_clients(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role == UserRole.ENGINEER:
+        return client_service.get_clients_by_user(db, current_user.id)
     clients = client_service.get_clients(db, skip=skip, limit=limit)
     return clients
 

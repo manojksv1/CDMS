@@ -1,9 +1,13 @@
 from sqlalchemy.orm import Session
 from app.models.location import Location
+from app.models.task import Task
 from app.schemas.location import LocationCreate, LocationUpdate
 
 def get_locations(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Location).offset(skip).limit(limit).all()
+
+def get_locations_by_user(db: Session, user_id: int):
+    return db.query(Location).join(Task).filter(Task.assigned_to == user_id).distinct().all()
 
 def get_locations_by_client(db: Session, client_id: int):
     return db.query(Location).filter(Location.client_id == client_id).all()

@@ -6,7 +6,7 @@ from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse, TaskStatusUpd
 from app.schemas.activity_log import ActivityLogResponse
 from app.services import task_service
 from app.api.deps import get_current_user, get_current_active_admin, get_current_manager_or_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -18,6 +18,8 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user: U
 def read_tasks(location_id: Optional[int] = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if location_id:
         return task_service.get_tasks_by_location(db, location_id=location_id)
+    if current_user.role == UserRole.ENGINEER:
+        return task_service.get_tasks_by_user(db, current_user.id)
     return task_service.get_tasks(db, skip=skip, limit=limit)
 
 @router.get("/{task_id}", response_model=TaskResponse)

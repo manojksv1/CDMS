@@ -1,9 +1,14 @@
 from sqlalchemy.orm import Session
 from app.models.client import Client
+from app.models.location import Location
+from app.models.task import Task
 from app.schemas.client import ClientCreate, ClientUpdate
 
 def get_clients(db: Session, skip: int = 0, limit: int = 100):
     return db.query(Client).offset(skip).limit(limit).all()
+
+def get_clients_by_user(db: Session, user_id: int):
+    return db.query(Client).join(Location).join(Task).filter(Task.assigned_to == user_id).distinct().all()
 
 def get_client(db: Session, client_id: int):
     return db.query(Client).filter(Client.id == client_id).first()
