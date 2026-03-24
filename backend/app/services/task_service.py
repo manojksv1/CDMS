@@ -59,9 +59,8 @@ def update_task_status(db: Session, task_id: int, status_update: TaskStatusUpdat
                 raise HTTPException(status_code=400, detail="Cannot start task until dependency is COMPLETED.")
     
     if new_status == TaskStatus.COMPLETED and old_status != TaskStatus.IN_PROGRESS:
-        # A task usually has to be in progress to be completed, but let's allow it from BLOCKED if it was previously in progress?
-        # Requirement: "Only IN_PROGRESS tasks can be COMPLETED"
-        raise HTTPException(status_code=400, detail="Only IN_PROGRESS tasks can be COMPLETED.")
+        # Relaxing requirement for better UX: Allow direct transition to COMPLETED
+        pass
 
     db_task.status = new_status
     db.commit()

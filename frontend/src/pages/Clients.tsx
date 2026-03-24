@@ -254,7 +254,7 @@ const Clients: React.FC = () => {
                   
                   {isExpanded && (
                     <tr style={{ background: '#fcfcfd', borderBottom: '1px solid #e5e7eb' }}>
-                      <td colSpan={5} style={{ padding: '1.5rem 2rem' }}>
+                      <td colSpan={6} style={{ padding: '1.5rem 2rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                           <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>Tracking Phases</h3>
                           {currentUser?.role !== 'Engineer' && (
