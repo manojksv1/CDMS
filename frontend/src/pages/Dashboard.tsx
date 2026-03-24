@@ -35,10 +35,6 @@ const Dashboard: React.FC = () => {
           <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#111827' }}>{summary.total_clients}</p>
         </div>
         <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Total Locations</h3>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#111827' }}>{summary.total_locations}</p>
-        </div>
-        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tasks Completed</h3>
           <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#111827' }}>{summary.completed_tasks} / {summary.total_tasks}</p>
         </div>

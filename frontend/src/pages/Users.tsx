@@ -1,15 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { Plus, X, Trash2 } from 'lucide-react';
+import { Plus, X, Trash2, Database, Upload, Download, Edit2, Key } from 'lucide-react';
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const currentUser = useAuthStore(state => state.user);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  
   const [formData, setFormData] = useState({ name: '', role: 'Engineer', password: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', role: 'Engineer', password: '' });
+  const [ownPasswordData, setOwnPasswordData] = useState({ new_password: '', confirm_password: '' });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -21,6 +29,53 @@ const Users: React.FC = () => {
       setUsers(res.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleBackup = async () => {
+    setIsMaintenanceActive(true);
+    try {
+      const response = await api.get('/system/backup', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `cdms_full_backup_${new Date().toISOString().split('T')[0]}.sql`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      alert("Backup failed. Check console for details.");
+      console.error(err);
+    } finally {
+      setIsMaintenanceActive(false);
+    }
+  };
+
+  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm("WARNING: This will overwrite your current database. Are you absolutely sure?")) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsMaintenanceActive(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      await api.post('/system/restore', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      alert("Database restored successfully! The page will now reload.");
+      window.location.reload();
+    } catch (err: any) {
+      alert("Restore failed: " + (err.response?.data?.detail || "Unknown error"));
+      console.error(err);
+    } finally {
+      setIsMaintenanceActive(false);
+      e.target.value = '';
     }
   };
 
@@ -40,6 +95,47 @@ const Users: React.FC = () => {
     }
   };
 
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const payload: any = {
+        name: editFormData.name,
+        role: editFormData.role
+      };
+      if (editFormData.password) {
+        payload.password = editFormData.password;
+      }
+      
+      await api.patch(`/users/${selectedUser.id}`, payload);
+      setIsEditModalOpen(false);
+      fetchUsers();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to update user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOwnPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (ownPasswordData.new_password !== ownPasswordData.confirm_password) {
+      alert("Passwords do not match!");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await api.post('/users/reset-password', { new_password: ownPasswordData.new_password });
+      alert("Password updated successfully!");
+      setOwnPasswordData({ new_password: '', confirm_password: '' });
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to update password');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (window.confirm("Are you sure you want to delete this user?")) {
       try {
@@ -50,6 +146,12 @@ const Users: React.FC = () => {
         alert(err.response?.data?.detail || 'Failed to delete user');
       }
     }
+  };
+
+  const openEditModal = (user: any) => {
+    setSelectedUser(user);
+    setEditFormData({ name: user.name, role: user.role, password: '' });
+    setIsEditModalOpen(true);
   };
 
   return (
@@ -66,14 +168,14 @@ const Users: React.FC = () => {
         )}
       </div>
       
-      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '2rem' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
             <tr>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>ID</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Name</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Role</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Action</th>
+              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500, textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -93,16 +195,29 @@ const Users: React.FC = () => {
                     {u.role}
                   </span>
                 </td>
-                <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>
-                  {currentUser?.role === 'Admin' && currentUser.id !== u.id && (
-                    <button 
-                      onClick={() => handleDelete(u.id)}
-                      style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                      title="Delete User"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                    {currentUser?.role === 'Admin' && (
+                      <>
+                        <button 
+                          onClick={() => openEditModal(u)}
+                          style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer' }}
+                          title="Edit User"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        {currentUser.id !== u.id && (
+                          <button 
+                            onClick={() => handleDelete(u.id)}
+                            style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer' }}
+                            title="Delete User"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -117,7 +232,93 @@ const Users: React.FC = () => {
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Change My Password Section */}
+      <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          <Key size={20} style={{ color: '#111827' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Change My Password</h3>
+        </div>
+        <form onSubmit={handleOwnPasswordSubmit} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>New Password</label>
+            <input 
+              required 
+              type="password" 
+              value={ownPasswordData.new_password} 
+              onChange={e => setOwnPasswordData({...ownPasswordData, new_password: e.target.value})} 
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', minWidth: '200px' }} 
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Confirm Password</label>
+            <input 
+              required 
+              type="password" 
+              value={ownPasswordData.confirm_password} 
+              onChange={e => setOwnPasswordData({...ownPasswordData, confirm_password: e.target.value})} 
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', minWidth: '200px' }} 
+            />
+          </div>
+          <button 
+            type="submit" 
+            disabled={isSubmitting} 
+            style={{ background: '#111827', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer', height: '38px', fontWeight: 500 }}
+          >
+            Update Password
+          </button>
+        </form>
+      </div>
+
+      {/* Database Maintenance Section */}
+      {currentUser?.role === 'Admin' && (
+        <div style={{ marginTop: '3rem', borderTop: '1px solid #e5e7eb', paddingTop: '2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <Database size={24} style={{ color: '#111827' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', margin: 0 }}>Database Maintenance</h2>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            {/* Backup Card */}
+            <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Full Database Backup</h3>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+                Download a complete SQL snapshot of the current database. Use this to migrate data or keep offline backups.
+              </p>
+              <button 
+                onClick={handleBackup}
+                disabled={isMaintenanceActive}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#111827', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: '0.875rem' }}
+              >
+                <Download size={18} /> {isMaintenanceActive ? 'Processing...' : 'Download Backup (.sql)'}
+              </button>
+            </div>
+
+            {/* Restore Card */}
+            <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Restore Database</h3>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>
+                Upload a valid SQL backup file to overwrite the current database. <span style={{ color: '#c81e1e', fontWeight: 600 }}>WARNING: This is irreversible.</span>
+              </p>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                onChange={handleRestore}
+                accept=".sql"
+                style={{ display: 'none' }}
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isMaintenanceActive}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#c81e1e', padding: '0.625rem 1.25rem', borderRadius: '6px', border: '1px solid #c81e1e', cursor: 'pointer', fontWeight: 500, fontSize: '0.875rem' }}
+              >
+                <Upload size={18} /> {isMaintenanceActive ? 'Processing...' : 'Upload & Restore (.sql)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Modal */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '400px', padding: '2rem', position: 'relative' }}>
@@ -153,6 +354,44 @@ const Users: React.FC = () => {
                 <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
                   {isSubmitting ? 'Saving...' : 'Save User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditModalOpen && selectedUser && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '400px', padding: '2rem', position: 'relative' }}>
+            <button onClick={() => setIsEditModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Edit User: {selectedUser.name}</h2>
+            
+            <form onSubmit={handleEditSubmit}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Name / Username</label>
+                <input required type="text" value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Role</label>
+                <select required value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  <option value="Engineer">Engineer</option>
+                  <option value="Manager">Manager</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>New Password (leave blank to keep current)</label>
+                <input type="password" value={editFormData.password} onChange={e => setEditFormData({...editFormData, password: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                <button type="button" onClick={() => setIsEditModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                  {isSubmitting ? 'Updating...' : 'Update User'}
                 </button>
               </div>
             </form>

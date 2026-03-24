@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.core.database import get_db
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserUpdate, UserPasswordReset
 from app.services import user_service
-from app.api.deps import get_current_user, get_current_active_admin, get_current_manager_or_admin
+from app.api.deps import get_current_user, get_current_active_admin
 from app.models.user import User
 
 router = APIRouter()
@@ -15,6 +15,17 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: U
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
     return user_service.create_user(db=db, user=user)
+
+@router.patch("/{user_id}", response_model=UserResponse)
+def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_admin)):
+    db_user = user_service.update_user(db=db, user_id=user_id, user_update=user_update)
+    if db_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return db_user
+
+@router.post("/reset-password", response_model=UserResponse)
+def reset_own_password(password_reset: UserPasswordReset, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return user_service.update_user_password(db=db, user_id=current_user.id, new_password=password_reset.new_password)
 
 @router.get("/", response_model=List[UserResponse])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -33,4 +44,3 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User 
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
-

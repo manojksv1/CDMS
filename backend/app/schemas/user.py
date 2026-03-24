@@ -15,6 +15,14 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
+class UserPasswordReset(BaseModel):
+    new_password: str
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[UserRole] = None
+    password: Optional[str] = None
+
 class Token(BaseModel):
     access_token: str
     token_type: str
