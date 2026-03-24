@@ -32,15 +32,12 @@ const Layout: React.FC = () => {
             <span>Clients</span>
           </NavLink>
           
-          <NavLink to="/locations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <MapPin size={20} />
-            <span>Locations</span>
-          </NavLink>
-          
-          <NavLink to="/tasks" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <CheckSquare size={20} />
-            <span>Tasks</span>
-          </NavLink>
+          {user?.role !== 'Engineer' && (
+            <NavLink to="/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <Users size={20} />
+              <span>Users</span>
+            </NavLink>
+          )}
         </nav>
       </aside>
       

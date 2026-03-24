@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import Locations from './pages/Locations';
 import Tasks from './pages/Tasks';
+import Users from './pages/Users';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -33,8 +34,7 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="clients" element={<Clients />} />
-          <Route path="locations" element={<Locations />} />
-          <Route path="tasks" element={<Tasks />} />
+          <Route path="users" element={<Users />} />
         </Route>
       </Routes>
     </BrowserRouter>

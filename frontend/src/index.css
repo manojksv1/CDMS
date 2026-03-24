@@ -3,9 +3,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: light;
   color: #111827;
-  background-color: #f9fafb;
+  background-color: #f3f4f6;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -26,4 +26,15 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   margin-top: 0;
+}
+
+/* Global Input & Select styling to prevent invisible text */
+input, select, textarea {
+  color: #111827;
+  background-color: #ffffff;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid #3f83f8;
+  outline-offset: -1px;
 }
