@@ -220,10 +220,10 @@ const Clients: React.FC = () => {
                     </td>
                     <td 
                       onClick={() => setExpandedClient(isExpanded ? null : c.id)}
-                      style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500, color: '#1a56db', cursor: 'pointer' }}
+                      style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500, color: '#111827', cursor: 'pointer' }}
                       title="Click to view tracking phases"
                     >
-                      <span style={{ borderBottom: '1px dashed #1a56db' }}>{c.name}</span>
+                      {c.name}
                     </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
                       {c.database_type ? (
