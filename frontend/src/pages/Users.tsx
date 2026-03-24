@@ -138,6 +138,11 @@ const Users: React.FC = () => {
                   <option value="Manager">Manager</option>
                   <option value="Admin">Admin</option>
                 </select>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280', background: '#f9fafb', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+                  {formData.role === 'Engineer' && "Can only view and update tasks specifically assigned to them."}
+                  {formData.role === 'Manager' && "Can view all data, create tasks, and assign work to Engineers."}
+                  {formData.role === 'Admin' && "Full access. Can manage users, clients, and all tasks."}
+                </div>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Password *</label>

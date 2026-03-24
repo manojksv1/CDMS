@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
-from app.schemas.task import TaskCreate, TaskResponse, TaskStatusUpdate, TaskAssign
+from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse, TaskStatusUpdate, TaskAssign
 from app.schemas.activity_log import ActivityLogResponse
 from app.services import task_service
 from app.api.deps import get_current_user, get_current_active_admin, get_current_manager_or_admin
@@ -26,6 +26,10 @@ def read_task(task_id: int, db: Session = Depends(get_db), current_user: User = 
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return db_task
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return task_service.update_task(db=db, task_id=task_id, task_update=task_update, current_user=current_user)
 
 @router.patch("/{task_id}/assign", response_model=TaskResponse)
 def assign_task(task_id: int, task_assign: TaskAssign, db: Session = Depends(get_db), current_user: User = Depends(get_current_manager_or_admin)):

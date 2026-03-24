@@ -5,6 +5,7 @@ class ClientBase(BaseModel):
     name: str
     contact_info: Optional[str] = None
     database_type: Optional[str] = None
+    database_version: Optional[str] = None
     remarks: Optional[str] = None
 
 class ClientCreate(ClientBase):

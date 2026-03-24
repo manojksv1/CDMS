@@ -15,6 +15,8 @@ class Task(Base):
     id = Column(Integer, primary_key=True, index=True)
     location_id = Column(Integer, ForeignKey("locations.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, index=True, nullable=False)
+    build_version = Column(String, nullable=True)
+    remarks = Column(String, nullable=True)
     status = Column(Enum(TaskStatus), default=TaskStatus.NOT_STARTED, nullable=False)
     assigned_to = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     due_date = Column(Date, nullable=False)

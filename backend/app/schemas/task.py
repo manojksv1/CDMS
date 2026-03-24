@@ -6,6 +6,8 @@ from app.models.task import TaskStatus
 class TaskBase(BaseModel):
     name: str
     due_date: date
+    build_version: Optional[str] = None
+    remarks: Optional[str] = None
     dependency_task_id: Optional[int] = None
 
 class TaskCreate(TaskBase):
@@ -14,6 +16,8 @@ class TaskCreate(TaskBase):
 class TaskUpdate(BaseModel):
     name: Optional[str] = None
     due_date: Optional[date] = None
+    build_version: Optional[str] = None
+    remarks: Optional[str] = None
     dependency_task_id: Optional[int] = None
 
 class TaskStatusUpdate(BaseModel):

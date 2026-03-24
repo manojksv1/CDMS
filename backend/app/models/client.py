@@ -8,4 +8,5 @@ class Client(Base):
     name = Column(String, index=True, nullable=False)
     contact_info = Column(String, nullable=True)
     database_type = Column(String, nullable=True)
+    database_version = Column(String, nullable=True)
     remarks = Column(String, nullable=True)

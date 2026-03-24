@@ -80,5 +80,22 @@ def update_task_status(db: Session, task_id: int, status_update: TaskStatusUpdat
 
     return db_task
 
+def update_task(db: Session, task_id: int, task_update: TaskUpdate, current_user: User):
+    db_task = get_task(db, task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if current_user.role == UserRole.ENGINEER:
+        if db_task.assigned_to != current_user.id:
+            raise HTTPException(status_code=403, detail="Engineers can only update tasks assigned to them.")
+
+    update_data = task_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_task, key, value)
+    
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
 def get_task_activity_logs(db: Session, task_id: int):
     return db.query(ActivityLog).filter(ActivityLog.task_id == task_id).order_by(ActivityLog.timestamp.desc()).all()
