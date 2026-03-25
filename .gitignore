@@ -1,5 +1,6 @@
 # Ignore the CSV file containing client data
 *.csv
+*.xlsx
 
 # Python
 __pycache__/

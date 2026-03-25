@@ -5,6 +5,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
+import Implementations from './pages/Implementations';
+import ImplementationDetail from './pages/ImplementationDetail';
 import Users from './pages/Users';
 
 // Protected Route Component
@@ -31,6 +33,8 @@ function App() {
           }
         >
           <Route index element={<Dashboard />} />
+          <Route path="implementations" element={<Implementations />} />
+          <Route path="implementations/:id" element={<ImplementationDetail />} />
           <Route path="clients" element={<Clients />} />
           <Route path="users" element={<Users />} />
         </Route>

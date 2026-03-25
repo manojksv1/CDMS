@@ -260,7 +260,7 @@ const Users: React.FC = () => {
                         )}
                         {currentUser.id !== u.id && (
                           <button 
-                            onClick={() => handleDelete(u.id)}
+                            onClick={() => handleDelete(u.id, u.name)}
                             style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer' }}
                             title="Delete User"
                           >
