@@ -49,6 +49,16 @@ class ImplementationTask(Base):
     implementation_id = Column(Integer, ForeignKey("implementations.id", ondelete="CASCADE"), nullable=False)
     
     task_name = Column(String, nullable=False)
+    section = Column(String, nullable=True) # e.g., "Implementation", "Training"
     weight = Column(Float, nullable=False) # e.g., 5.0 for 5%
     is_completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
+
+class GlobalMilestone(Base):
+    __tablename__ = "global_milestones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_name = Column(String, nullable=False)
+    section = Column(String, nullable=False)
+    weight = Column(Float, nullable=False)
+    order = Column(Integer, default=0)

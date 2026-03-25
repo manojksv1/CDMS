@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Users, LogOut, Shield, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Shield, ClipboardList, Wrench } from 'lucide-react';
 import Notification from './Notification';
 import './Layout.css';
 
@@ -40,6 +40,13 @@ const Layout: React.FC = () => {
             <ClipboardList size={20} />
             <span>Implementations</span>
           </NavLink>
+
+          {user?.role !== 'ENGINEER' && (
+            <NavLink to="/implementations/template" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <Wrench size={20} />
+              <span>Milestone Template</span>
+            </NavLink>
+          )}
           
           {user?.role !== 'ENGINEER' && (
             <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

@@ -5,6 +5,7 @@ from datetime import date, datetime
 # --- Task Schemas ---
 class ImplementationTaskBase(BaseModel):
     task_name: str
+    section: Optional[str] = None
     weight: float
     is_completed: bool = False
 
@@ -78,3 +79,25 @@ class Implementation(ImplementationBase):
 class ImplementationDetail(Implementation):
     logs: List[ImplementationLog] = []
     tasks: List[ImplementationTask] = []
+
+# --- Global Milestone (Template) Schemas ---
+class GlobalMilestoneBase(BaseModel):
+    task_name: str
+    section: str
+    weight: float
+    order: int = 0
+
+class GlobalMilestoneCreate(GlobalMilestoneBase):
+    pass
+
+class GlobalMilestoneUpdate(BaseModel):
+    task_name: Optional[str] = None
+    section: Optional[str] = None
+    weight: Optional[float] = None
+    order: Optional[int] = None
+
+class GlobalMilestone(GlobalMilestoneBase):
+    id: int
+
+    class Config:
+        from_attributes = True

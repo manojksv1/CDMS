@@ -6,10 +6,11 @@ from app.api.deps import get_current_user
 from app.schemas.implementation import (
     Implementation, ImplementationCreate, ImplementationUpdate, ImplementationDetail,
     ImplementationLog, ImplementationLogCreate,
-    ImplementationTask, ImplementationTaskUpdate
+    ImplementationTask, ImplementationTaskUpdate,
+    GlobalMilestone, GlobalMilestoneCreate, GlobalMilestoneUpdate
 )
 from app.services import implementation_service
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -39,6 +40,23 @@ def read_implementation(
     if not db_imp:
         raise HTTPException(status_code=404, detail="Implementation not found or access denied")
     
+    # Backfill Logic for existing tasks (Migration fallback)
+    default_tasks = {
+        "Pre_Requisites for DMS Implementation": ("DMS Implementation", 20.0),
+        "Preparation of DMS implementation plan": ("Planning", 10.0),
+        "Testing and test reports": ("Testing", 10.0),
+        "Customer sign off Document": ("Sign Off", 10.0),
+    }
+
+    modified = False
+    for task in db_imp.tasks:
+        if not task.section and task.task_name in default_tasks:
+            task.section, task.weight = default_tasks[task.task_name]
+            modified = True
+    
+    if modified:
+        db.commit()
+
     # Enrichment for frontend
     for log in db_imp.logs:
         if log.user:
@@ -85,3 +103,76 @@ def update_task(
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
     return db_task
+
+# --- Template Endpoints ---
+
+@router.get("/templates/", response_model=List[GlobalMilestone])
+def read_templates(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return implementation_service.get_global_milestones(db)
+
+@router.post("/templates/", response_model=GlobalMilestone)
+def create_template(
+    milestone: GlobalMilestoneCreate, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins/Managers can edit templates")
+    return implementation_service.create_global_milestone(db, milestone)
+
+@router.patch("/templates/{milestone_id}", response_model=GlobalMilestone)
+def update_template(
+    milestone_id: int,
+    milestone_update: GlobalMilestoneUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins/Managers can edit templates")
+    db_m = implementation_service.update_global_milestone(db, milestone_id, milestone_update)
+    if not db_m: raise HTTPException(status_code=404, detail="Template item not found")
+    return db_m
+
+@router.delete("/templates/{milestone_id}")
+def delete_template(
+    milestone_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins/Managers can edit templates")
+    implementation_service.delete_global_milestone(db, milestone_id)
+    return {"message": "Template item deleted"}
+
+@router.post("/templates/{milestone_id}/reorder")
+def reorder_template(
+    milestone_id: int,
+    direction: str, # "up" or "down"
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins/Managers can edit templates")
+    db_m = implementation_service.reorder_global_milestone(db, milestone_id, direction)
+    if not db_m: raise HTTPException(status_code=404, detail="Template item not found")
+    return {"message": "Reordered successfully"}
+
+@router.post("/templates/bulk-reorder")
+def bulk_reorder_templates(
+    milestone_ids: List[int],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins/Managers can edit templates")
+    implementation_service.bulk_reorder_milestones(db, milestone_ids)
+    return {"message": "Bulk reorder successful"}
+
+@router.post("/{implementation_id}/sync-template")
+def sync_project_template(
+    implementation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    added = implementation_service.sync_implementation_milestones(db, implementation_id)
+    return {"message": f"Synced successfully. Added {added} new milestones."}

@@ -10,7 +10,13 @@ import {
   Circle,
   TrendingUp,
   Target,
-  User
+  User,
+  X,
+  MessageSquare,
+  ListChecks,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw
 } from 'lucide-react';
 
 const ImplementationDetail: React.FC = () => {
@@ -19,6 +25,7 @@ const ImplementationDetail: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<string[]>(["DMS Implementation"]);
   
   const [logFormData, setLogFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -66,10 +73,16 @@ const ImplementationDetail: React.FC = () => {
   const handleToggleTask = async (taskId: number, currentStatus: boolean) => {
     try {
       await api.patch(`/implementations/tasks/${taskId}`, { is_completed: !currentStatus });
-      fetchProject(); // Refresh to get new percentage
+      fetchProject();
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => 
+      prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
+    );
   };
 
   const handleAddLog = async (e: React.FormEvent) => {
@@ -97,38 +110,52 @@ const ImplementationDetail: React.FC = () => {
     }
   };
 
+  const handleSyncTemplate = async () => {
+    if (window.confirm("This will add any new milestones from the master template to this project. Existing progress will be saved. Continue?")) {
+      try {
+        const res = await api.post(`/implementations/${id}/sync-template`);
+        showNotification(res.data.message, "success");
+        fetchProject();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  };
+
   if (isLoading) return <div className="p-10 text-center">Loading project details...</div>;
   if (!project) return null;
+
+  // Group tasks by section
+  const sections = project.tasks.reduce((acc: any, task: any) => {
+    const s = task.section || "General";
+    if (!acc[s]) acc[s] = [];
+    acc[s].push(task);
+    return acc;
+  }, {});
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-        <button 
-          onClick={() => navigate('/implementations')}
-          style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
+        <button onClick={() => navigate('/implementations')} style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ArrowLeft size={20} />
         </button>
         <div>
           <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', margin: 0 }}>{project.company_name}</h1>
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <User size={16} /> {project.poc_name || 'No POC'}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <TrendingUp size={16} /> {project.version_details || 'No Version'}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-              <Target size={16} /> Status: <strong style={{ color: '#111827' }}>{project.status}</strong>
-            </span>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><User size={16} /> {project.poc_name || 'No POC'}</span>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><TrendingUp size={16} /> {project.version_details || 'No Version'}</span>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Target size={16} /> Status: <strong style={{ color: '#111827' }}>{project.status}</strong></span>
           </div>
         </div>
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.75rem' }}>
           <button 
-            onClick={() => setIsEditModalOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+            onClick={handleSyncTemplate}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#059669' }}
           >
+            <RefreshCw size={18} /> Sync Template
+          </button>
+          <button onClick={() => setIsEditModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
             <Settings size={18} /> Edit Project
           </button>
         </div>
@@ -158,82 +185,89 @@ const ImplementationDetail: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '2rem' }}>
-        {/* Left Column: Checklist */}
-        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Milestone Checklist</h2>
-            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>Mark tasks to update progress automatically</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 420px', gap: '2rem', alignItems: 'start' }}>
+        {/* Left Column: Daily Updates */}
+        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <MessageSquare size={18} style={{ color: '#1a56db' }} />
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Activity & Daily Updates</h2>
+            </div>
+            <button onClick={() => setIsLogModalOpen(true)} style={{ background: '#111827', color: 'white', border: 'none', borderRadius: '6px', padding: '0.5rem 1rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Plus size={16} /> Log Update</button>
           </div>
-          <div style={{ padding: '1rem' }}>
-            {project.tasks.map((task: any) => (
-              <div 
-                key={task.id} 
-                onClick={() => handleToggleTask(task.id, task.is_completed)}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '1rem', 
-                  padding: '1rem', 
-                  borderRadius: '8px', 
-                  cursor: 'pointer', 
-                  background: task.is_completed ? '#f0fdf4' : 'transparent',
-                  transition: 'all 0.2s',
-                  border: '1px solid transparent',
-                  marginBottom: '0.5rem'
-                }}
-                className="task-item"
-              >
-                {task.is_completed ? 
-                  <CheckCircle2 size={24} style={{ color: '#10b981' }} /> : 
-                  <Circle size={24} style={{ color: '#d1d5db' }} />
-                }
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827' }}>{task.task_name}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Weight: {task.weight}%</div>
+          
+          <div style={{ padding: '2rem' }}>
+            <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: '2rem', position: 'relative' }}>
+              {project.logs.length === 0 ? (
+                <div style={{ color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic', marginLeft: '-2rem', paddingLeft: '2rem' }}>No updates logged yet.</div>
+              ) : (
+                project.logs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log: any) => (
+                  <div key={log.id} style={{ marginBottom: '2.5rem', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: '-2rem', top: '0.25rem', width: '12px', height: '12px', background: '#1a56db', borderRadius: '50%', transform: 'translateX(-50%)', border: '3px solid white', boxShadow: '0 0 0 1px #e5e7eb' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827' }}>{new Date(log.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        <span style={{ padding: '0.125rem 0.5rem', background: '#eff6ff', color: '#1e40af', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>{Math.round(log.percentage_at_time)}%</span>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>By {log.user_name || 'System'}</span>
+                    </div>
+                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '8px', border: '1px solid #f3f4f6' }}>
+                      <p style={{ margin: 0, fontSize: '0.9375rem', color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{log.remarks}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Grouped Milestone Checklist */}
+        <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <ListChecks size={18} style={{ color: '#10b981' }} />
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Project Milestones</h2>
+            </div>
+          </div>
+          <div style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+            {Object.keys(sections).map(sectionName => (
+              <div key={sectionName} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <div 
+                  onClick={() => toggleSection(sectionName)}
+                  style={{ padding: '1rem', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '4px solid #1a56db' }}
+                >
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.025em' }}>{sectionName}</span>
+                  {expandedSections.includes(sectionName) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </div>
-                {task.is_completed && task.completed_at && (
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                    Done {new Date(task.completed_at).toLocaleDateString()}
+                
+                {expandedSections.includes(sectionName) && (
+                  <div style={{ padding: '0.5rem' }}>
+                    {sections[sectionName].map((task: any) => (
+                      <div 
+                        key={task.id} 
+                        onClick={() => handleToggleTask(task.id, task.is_completed)}
+                        style={{ 
+                          display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', 
+                          background: task.is_completed ? '#f0fdf4' : 'transparent', transition: 'all 0.2s', border: '1px solid',
+                          borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem'
+                        }}
+                      >
+                        <div style={{ marginTop: '0.125rem' }}>
+                          {task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{task.weight}%</span>
+                            {task.is_completed && task.completed_at && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Right Column: Timeline */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Daily Updates</h2>
-              <button 
-                onClick={() => setIsLogModalOpen(true)}
-                style={{ background: '#111827', color: 'white', border: 'none', borderRadius: '6px', padding: '0.4rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-              >
-                <Plus size={14} /> Log Update
-              </button>
-            </div>
-            
-            <div style={{ padding: '1.5rem', maxHeight: '600px', overflowY: 'auto' }}>
-              <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: '1.5rem', position: 'relative' }}>
-                {project.logs.length === 0 ? (
-                  <div style={{ color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic', marginLeft: '-1.5rem', paddingLeft: '1.5rem' }}>No updates logged yet.</div>
-                ) : (
-                  project.logs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log: any) => (
-                    <div key={log.id} style={{ marginBottom: '1.5rem', position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: '-1.5rem', top: '0.25rem', width: '10px', height: '10px', background: '#1a56db', borderRadius: '50%', transform: 'translateX(-50%)', border: '2px solid white' }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#111827' }}>{new Date(log.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>at {Math.round(log.percentage_at_time)}%</span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.875rem', color: '#4b5563', lineHeight: 1.5 }}>{log.remarks}</p>
-                      <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.25rem' }}>By {log.user_name || 'System'}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -242,7 +276,10 @@ const ImplementationDetail: React.FC = () => {
       {isLogModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '1rem' }}>
           <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Add Daily Update</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Add Daily Update</h2>
+              <button onClick={() => setIsLogModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
+            </div>
             <form onSubmit={handleAddLog}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Date</label>
@@ -250,14 +287,7 @@ const ImplementationDetail: React.FC = () => {
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Remarks / Activity</label>
-                <textarea 
-                  required 
-                  rows={4}
-                  value={logFormData.remarks} 
-                  onChange={e => setLogFormData({...logFormData, remarks: e.target.value})} 
-                  style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} 
-                  placeholder="What work was completed today?"
-                />
+                <textarea required rows={4} value={logFormData.remarks} onChange={e => setLogFormData({...logFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} placeholder="What work was completed today?" />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                 <button type="button" onClick={() => setIsLogModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
@@ -272,7 +302,10 @@ const ImplementationDetail: React.FC = () => {
       {isEditModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '1rem' }}>
           <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '600px', padding: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Edit Project Details</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Edit Project Details</h2>
+              <button onClick={() => setIsEditModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
+            </div>
             <form onSubmit={handleUpdateProject}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
