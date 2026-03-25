@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { useNotificationStore } from '../store/notificationStore';
 import { Plus, X } from 'lucide-react';
 
 const Locations: React.FC = () => {
@@ -8,6 +9,7 @@ const Locations: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', client_id: '', hostname: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const showNotification = useNotificationStore(state => state.show);
 
   useEffect(() => {
     fetchLocations();
@@ -43,10 +45,10 @@ const Locations: React.FC = () => {
       });
       setIsModalOpen(false);
       setFormData({ name: '', client_id: '', hostname: '' });
+      showNotification("Location added successfully!", "success");
       fetchLocations();
     } catch (err) {
       console.error(err);
-      alert('Failed to create location');
     } finally {
       setIsSubmitting(false);
     }

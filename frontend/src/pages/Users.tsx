@@ -1,20 +1,21 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { Plus, X, Trash2, Database, Upload, Download, Edit2, Key } from 'lucide-react';
+import { useNotificationStore } from '../store/notificationStore';
+import { Plus, X, Trash2, Database, Upload, Download, Edit2 } from 'lucide-react';
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const currentUser = useAuthStore(state => state.user);
+  const showNotification = useNotificationStore(state => state.show);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   
-  const [formData, setFormData] = useState({ name: '', role: 'Engineer', password: '' });
-  const [editFormData, setEditFormData] = useState({ name: '', role: 'Engineer', password: '' });
-  const [ownPasswordData, setOwnPasswordData] = useState({ new_password: '', confirm_password: '' });
+  const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
@@ -43,9 +44,10 @@ const Users: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      showNotification("Backup downloaded successfully!", "success");
     } catch (err) {
-      alert("Backup failed. Check console for details.");
       console.error(err);
+      // Note: error notification is handled by the api interceptor
     } finally {
       setIsMaintenanceActive(false);
     }
@@ -68,10 +70,13 @@ const Users: React.FC = () => {
       await api.post('/system/restore', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      alert("Database restored successfully! The page will now reload.");
-      window.location.reload();
+      showNotification("Restore process started. The database will be ready in a few seconds.", "info");
+      
+      // Wait a bit then reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
     } catch (err: any) {
-      alert("Restore failed: " + (err.response?.data?.detail || "Unknown error"));
       console.error(err);
     } finally {
       setIsMaintenanceActive(false);
@@ -85,11 +90,11 @@ const Users: React.FC = () => {
     try {
       await api.post('/users/', formData);
       setIsModalOpen(false);
-      setFormData({ name: '', role: 'Engineer', password: '' });
+      setFormData({ name: '', role: 'ENGINEER', password: '' });
+      showNotification("User created successfully!", "success");
       fetchUsers();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to create user');
     } finally {
       setIsSubmitting(false);
     }
@@ -109,28 +114,10 @@ const Users: React.FC = () => {
       
       await api.patch(`/users/${selectedUser.id}`, payload);
       setIsEditModalOpen(false);
+      showNotification("User updated successfully!", "success");
       fetchUsers();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to update user');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleOwnPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (ownPasswordData.new_password !== ownPasswordData.confirm_password) {
-      alert("Passwords do not match!");
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      await api.post('/users/reset-password', { new_password: ownPasswordData.new_password });
-      alert("Password updated successfully!");
-      setOwnPasswordData({ new_password: '', confirm_password: '' });
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update password');
     } finally {
       setIsSubmitting(false);
     }
@@ -140,10 +127,10 @@ const Users: React.FC = () => {
     if (window.confirm("Are you sure you want to delete this user?")) {
       try {
         await api.delete(`/users/${id}`);
+        showNotification("User deleted successfully!", "success");
         fetchUsers();
       } catch (err: any) {
         console.error(err);
-        alert(err.response?.data?.detail || 'Failed to delete user');
       }
     }
   };
@@ -158,7 +145,7 @@ const Users: React.FC = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>User Management</h1>
-        {currentUser?.role === 'Admin' && (
+        {currentUser?.role === 'ADMIN' && (
           <button 
             onClick={() => setIsModalOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
@@ -189,15 +176,15 @@ const Users: React.FC = () => {
                     borderRadius: '9999px', 
                     fontSize: '0.75rem', 
                     fontWeight: 500,
-                    backgroundColor: u.role === 'Admin' ? '#fde8e8' : (u.role === 'Manager' ? '#e1effe' : '#def7ec'),
-                    color: u.role === 'Admin' ? '#9b1c1c' : (u.role === 'Manager' ? '#1e429f' : '#03543f')
+                    backgroundColor: u.role === 'ADMIN' ? '#fde8e8' : (u.role === 'MANAGER' ? '#e1effe' : '#def7ec'),
+                    color: u.role === 'ADMIN' ? '#9b1c1c' : (u.role === 'MANAGER' ? '#1e429f' : '#03543f')
                   }}>
                     {u.role}
                   </span>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                    {currentUser?.role === 'Admin' && (
+                    {currentUser?.role === 'ADMIN' && (
                       <>
                         <button 
                           onClick={() => openEditModal(u)}
@@ -232,45 +219,8 @@ const Users: React.FC = () => {
         </table>
       </div>
 
-      {/* Change My Password Section */}
-      <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-          <Key size={20} style={{ color: '#111827' }} />
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Change My Password</h3>
-        </div>
-        <form onSubmit={handleOwnPasswordSubmit} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>New Password</label>
-            <input 
-              required 
-              type="password" 
-              value={ownPasswordData.new_password} 
-              onChange={e => setOwnPasswordData({...ownPasswordData, new_password: e.target.value})} 
-              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', minWidth: '200px' }} 
-            />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Confirm Password</label>
-            <input 
-              required 
-              type="password" 
-              value={ownPasswordData.confirm_password} 
-              onChange={e => setOwnPasswordData({...ownPasswordData, confirm_password: e.target.value})} 
-              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', minWidth: '200px' }} 
-            />
-          </div>
-          <button 
-            type="submit" 
-            disabled={isSubmitting} 
-            style={{ background: '#111827', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer', height: '38px', fontWeight: 500 }}
-          >
-            Update Password
-          </button>
-        </form>
-      </div>
-
       {/* Database Maintenance Section */}
-      {currentUser?.role === 'Admin' && (
+      {currentUser?.role === 'ADMIN' && (
         <div style={{ marginTop: '3rem', borderTop: '1px solid #e5e7eb', paddingTop: '2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <Database size={24} style={{ color: '#111827' }} />
@@ -335,14 +285,14 @@ const Users: React.FC = () => {
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Role *</label>
                 <select required value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="Engineer">Engineer</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Admin">Admin</option>
+                  <option value="ENGINEER">Engineer</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="ADMIN">Admin</option>
                 </select>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280', background: '#f9fafb', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
-                  {formData.role === 'Engineer' && "Can only view and update tasks specifically assigned to them."}
-                  {formData.role === 'Manager' && "Can view all data, create tasks, and assign work to Engineers."}
-                  {formData.role === 'Admin' && "Full access. Can manage users, clients, and all tasks."}
+                  {formData.role === 'ENGINEER' && "Can only view and update tasks specifically assigned to them."}
+                  {formData.role === 'MANAGER' && "Can view all data, create tasks, and assign work to Engineers."}
+                  {formData.role === 'ADMIN' && "Full access. Can manage users, clients, and all tasks."}
                 </div>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
@@ -378,10 +328,15 @@ const Users: React.FC = () => {
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Role</label>
                 <select required value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="Engineer">Engineer</option>
-                  <option value="Manager">Manager</option>
-                  <option value="Admin">Admin</option>
+                  <option value="ENGINEER">Engineer</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="ADMIN">Admin</option>
                 </select>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#6b7280', background: '#f9fafb', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+                  {editFormData.role === 'ENGINEER' && "Can only view and update tasks specifically assigned to them."}
+                  {editFormData.role === 'MANAGER' && "Can view all data, create tasks, and assign work to Engineers."}
+                  {editFormData.role === 'ADMIN' && "Full access. Can manage users, clients, and all tasks."}
+                </div>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>New Password (leave blank to keep current)</label>

@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.schemas.user import UserCreate, UserResponse, UserUpdate, UserPasswordReset
 from app.services import user_service
 from app.api.deps import get_current_user, get_current_active_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -18,9 +18,17 @@ def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: U
 
 @router.patch("/{user_id}", response_model=UserResponse)
 def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_admin)):
-    db_user = user_service.update_user(db=db, user_id=user_id, user_update=user_update)
-    if db_user is None:
+    target_user = user_service.get_user(db, user_id)
+    if target_user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if we are changing the role of an admin to something else
+    if target_user.role == UserRole.ADMIN and user_update.role and user_update.role != UserRole.ADMIN:
+        admin_count = db.query(User).filter(User.role == UserRole.ADMIN).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot change the role of the last Admin user.")
+
+    db_user = user_service.update_user(db=db, user_id=user_id, user_update=user_update)
     return db_user
 
 @router.post("/reset-password", response_model=UserResponse)
@@ -40,6 +48,13 @@ def read_user_me(current_user: User = Depends(get_current_user)):
 def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_admin)):
     if current_user.id == user_id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    target_user = user_service.get_user(db, user_id)
+    if target_user and target_user.role == UserRole.ADMIN:
+        admin_count = db.query(User).filter(User.role == UserRole.ADMIN).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last Admin user.")
+            
     db_user = user_service.delete_user(db=db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")

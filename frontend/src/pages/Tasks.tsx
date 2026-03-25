@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
+import { useNotificationStore } from '../store/notificationStore';
 import { Plus, X, Edit2 } from 'lucide-react';
 
 const Tasks: React.FC = () => {
@@ -8,6 +9,7 @@ const Tasks: React.FC = () => {
   const [locations, setLocations] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const currentUser = useAuthStore(state => state.user);
+  const showNotification = useNotificationStore(state => state.show);
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -48,9 +50,10 @@ const Tasks: React.FC = () => {
       });
       setIsCreateModalOpen(false);
       setFormData({ name: '', location_id: '', due_date: '', dependency_task_id: '' });
+      showNotification("Task created successfully!", "success");
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to create task');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -74,15 +77,16 @@ const Tasks: React.FC = () => {
         await api.patch(`/tasks/${selectedTask.id}/status`, { status: editData.status });
       }
       // If assignee changed (and user is Manager/Admin)
-      if (editData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'Engineer') {
+      if (editData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'ENGINEER') {
         await api.patch(`/tasks/${selectedTask.id}/assign`, { 
           assigned_to: editData.assigned_to ? parseInt(editData.assigned_to) : null 
         });
       }
       setIsEditModalOpen(false);
+      showNotification("Task updated successfully!", "success");
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update task');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -100,7 +104,7 @@ const Tasks: React.FC = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>Task Board</h1>
-        {currentUser?.role !== 'Engineer' && (
+        {currentUser?.role !== 'ENGINEER' && (
           <button 
             onClick={() => setIsCreateModalOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
@@ -230,7 +234,7 @@ const Tasks: React.FC = () => {
                 </select>
               </div>
 
-              {currentUser?.role !== 'Engineer' && (
+              {currentUser?.role !== 'ENGINEER' && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Assignee</label>
                   <select value={editData.assigned_to} onChange={e => setEditData({...editData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>

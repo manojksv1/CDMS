@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { LayoutDashboard, Users, LogOut, Shield } from 'lucide-react';
+import Notification from './Notification';
 import './Layout.css';
 
 const Layout: React.FC = () => {
@@ -15,6 +16,7 @@ const Layout: React.FC = () => {
 
   return (
     <div className="app-container">
+      <Notification />
       <aside className="sidebar">
         <div className="sidebar-header">
           <Shield className="logo-icon" size={24} />
@@ -32,7 +34,7 @@ const Layout: React.FC = () => {
             <span>Clients</span>
           </NavLink>
           
-          {user?.role !== 'Engineer' && (
+          {user?.role !== 'ENGINEER' && (
             <NavLink to="/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Users size={20} />
               <span>Users</span>

@@ -3,9 +3,9 @@ from app.core.database import Base
 import enum
 
 class UserRole(str, enum.Enum):
-    ADMIN = "Admin"
-    MANAGER = "Manager"
-    ENGINEER = "Engineer"
+    ADMIN = "ADMIN"
+    MANAGER = "MANAGER"
+    ENGINEER = "ENGINEER"
 
 class User(Base):
     __tablename__ = "users"

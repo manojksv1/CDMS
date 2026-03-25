@@ -22,7 +22,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         role: str = payload.get("role")
         if user_id is None or role is None:
             raise credentials_exception
-        token_data = TokenData(id=int(user_id), role=UserRole(role))
+        token_data = TokenData(id=int(user_id), role=UserRole(role.upper()))
     except JWTError:
         raise credentials_exception
     

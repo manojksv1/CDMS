@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
+import { useNotificationStore } from '../store/notificationStore';
 import { Plus, X, ChevronDown, ChevronRight, Edit2, Download, MessageSquare, Send, Reply, Trash, Info } from 'lucide-react';
 
 const Clients: React.FC = () => {
@@ -10,6 +11,7 @@ const Clients: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   
   const currentUser = useAuthStore(state => state.user);
+  const showNotification = useNotificationStore(state => state.show);
   
   const [expandedClient, setExpandedClient] = useState<number | null>(null);
   
@@ -110,6 +112,7 @@ const Clients: React.FC = () => {
       });
       setNewComment('');
       setReplyTo(null);
+      showNotification("Comment added!", "success");
       fetchComments(selectedTask.id);
     } catch (err) {
       console.error(err);
@@ -120,6 +123,7 @@ const Clients: React.FC = () => {
     if (window.confirm("Delete this comment?")) {
       try {
         await api.delete(`/comments/${id}`);
+        showNotification("Comment deleted", "info");
         fetchComments(selectedTask.id);
       } catch (err) {
         console.error(err);
@@ -157,10 +161,10 @@ const Clients: React.FC = () => {
       await api.post('/clients/', clientFormData);
       setIsClientModalOpen(false);
       setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
+      showNotification("Client created successfully!", "success");
       fetchData();
     } catch (err) {
       console.error(err);
-      alert('Failed to create client');
     } finally {
       setIsSubmitting(false);
     }
@@ -193,10 +197,10 @@ const Clients: React.FC = () => {
       await api.patch(`/clients/${selectedClient.id}`, clientFormData);
       setIsEditClientModalOpen(false);
       setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
+      showNotification("Client updated successfully!", "success");
       fetchData();
     } catch (err) {
       console.error(err);
-      alert('Failed to update client');
     } finally {
       setIsSubmitting(false);
     }
@@ -233,10 +237,10 @@ const Clients: React.FC = () => {
       }
 
       setIsCreateTaskModalOpen(false);
+      showNotification("Task created successfully!", "success");
       fetchData();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to create task');
     } finally {
       setIsSubmitting(false);
     }
@@ -266,15 +270,16 @@ const Clients: React.FC = () => {
       if (editTaskFormData.status !== selectedTask.status) {
         await api.patch(`/tasks/${selectedTask.id}/status`, { status: editTaskFormData.status });
       }
-      if (editTaskFormData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'Engineer') {
+      if (editTaskFormData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'ENGINEER') {
         await api.patch(`/tasks/${selectedTask.id}/assign`, { 
           assigned_to: editTaskFormData.assigned_to ? parseInt(editTaskFormData.assigned_to) : null 
         });
       }
       setIsEditTaskModalOpen(false);
+      showNotification("Task updated successfully!", "success");
       fetchData();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update task');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -393,9 +398,9 @@ const Clients: React.FC = () => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       setIsExportModalOpen(false);
+      showNotification("CSV exported successfully!", "success");
     } catch (error) {
       console.error("Export failed", error);
-      alert("Failed to generate CSV. Please try again.");
     }
   };
 
@@ -419,7 +424,7 @@ const Clients: React.FC = () => {
           >
             <Download size={16} /> Export
           </button>
-          {currentUser?.role !== 'Engineer' && (
+          {currentUser?.role !== 'ENGINEER' && (
             <button 
               type="button"
               onClick={() => setIsClientModalOpen(true)}
@@ -508,7 +513,7 @@ const Clients: React.FC = () => {
                       >
                         <Info size={16} />
                       </button>
-                      {currentUser?.role !== 'Engineer' && (
+                      {currentUser?.role !== 'ENGINEER' && (
                         <button 
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openEditClient(c); }}
@@ -534,7 +539,7 @@ const Clients: React.FC = () => {
                       <td colSpan={7} style={{ padding: '1.5rem 2rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                           <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>Tracking Phases</h3>
-                          {currentUser?.role !== 'Engineer' && (
+                          {currentUser?.role !== 'ENGINEER' && (
                             <button 
                               type="button"
                               onClick={() => openCreateTask(c.id)}
@@ -965,7 +970,7 @@ const Clients: React.FC = () => {
                   <input type="text" value={editTaskFormData.build_version} onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
-              {currentUser?.role !== 'Engineer' && (
+              {currentUser?.role !== 'ENGINEER' && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Point of Contact</label>
                   <select value={editTaskFormData.assigned_to} onChange={e => setEditTaskFormData({...editTaskFormData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
