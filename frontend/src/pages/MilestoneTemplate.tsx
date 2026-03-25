@@ -7,45 +7,35 @@ import {
   AlertCircle,
   GripVertical,
   Edit2,
-  X
+  Layout,
+  CheckCircle2
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
 const MilestoneTemplate: React.FC = () => {
-  const [milestones, setMilestones] = useState<any[]>([]);
+  const [sections, setSections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedMilestone, setSelectedMilestone] = useState<any>(null);
-  
-  // Drag and drop state
-  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+  const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingSection, setEditingSection] = useState<any>(null);
+  const [editingTask, setEditingTask] = useState<any>(null);
 
   const currentUser = useAuthStore(state => state.user);
+
   const showNotification = useNotificationStore(state => state.show);
 
-  const [formData, setFormData] = useState({
-    task_name: '',
-    section: 'DMS Implementation',
-    weight: 0
-  });
-
-  const [editFormData, setEditFormData] = useState({
-    task_name: '',
-    section: '',
-    weight: 0
-  });
+  const [sectionFormData, setSectionFormData] = useState({ name: '', weight: 0 });
+  const [taskFormData, setTaskFormData] = useState({ task_name: '', weight: 0, section_id: 0 });
 
   useEffect(() => {
-    fetchMilestones();
+    fetchData();
   }, []);
 
-  const fetchMilestones = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/implementations/templates/');
-      const sorted = res.data.sort((a: any, b: any) => a.order - b.order);
-      setMilestones(sorted);
+      const res = await api.get('/implementations/sections/');
+      setSections(res.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -53,240 +43,195 @@ const MilestoneTemplate: React.FC = () => {
     }
   };
 
-  const handleAdd = async (e: React.FormEvent) => {
+  // --- Section CRUD ---
+  const handleSectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const nextOrder = milestones.length > 0 ? Math.max(...milestones.map(m => m.order)) + 1 : 0;
-      await api.post('/implementations/templates/', { ...formData, order: nextOrder });
-      showNotification("Milestone added!", "success");
-      setIsModalOpen(false);
-      setFormData({ task_name: '', section: 'DMS Implementation', weight: 0 });
-      fetchMilestones();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api.patch(`/implementations/templates/${selectedMilestone.id}`, editFormData);
-      showNotification("Milestone updated!", "success");
-      setIsEditModalOpen(false);
-      fetchMilestones();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure? New projects will no longer include this milestone.")) {
-      try {
-        await api.delete(`/implementations/templates/${id}`);
-        showNotification("Milestone removed", "info");
-        fetchMilestones();
-      } catch (err) {
-        console.error(err);
+      if (editingSection) {
+        await api.patch(`/implementations/sections/${editingSection.id}`, sectionFormData);
+        showNotification("Section updated", "success");
+      } else {
+        await api.post('/implementations/sections/', sectionFormData);
+        showNotification("Section created", "success");
       }
+      setIsSectionModalOpen(false);
+      setEditingSection(null);
+      setSectionFormData({ name: '', weight: 0 });
+      fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteSection = async (id: number) => {
+    if (window.confirm("Deleting a section will delete all tasks inside it. Continue?")) {
+      await api.delete(`/implementations/sections/${id}`);
+      fetchData();
     }
   };
 
-  // --- Drag and Drop Handlers ---
-  
-  const handleDragStart = (index: number) => {
-    setDraggedItemIndex(index);
-  };
-
-  const handleDragEnter = (_e: React.DragEvent, index: number) => {
-    if (draggedItemIndex === null || draggedItemIndex === index) return;
-    
-    const newMilestones = [...milestones];
-    const draggedItem = newMilestones[draggedItemIndex];
-    
-    // Remove the item from its old position and insert at new position
-    newMilestones.splice(draggedItemIndex, 1);
-    newMilestones.splice(index, 0, draggedItem);
-    
-    setDraggedItemIndex(index);
-    setMilestones(newMilestones);
-  };
-
-  const handleDragEnd = async () => {
-    setDraggedItemIndex(null);
+  // --- Task CRUD ---
+  const handleTaskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      // Sync the new order with backend
-      const ids = milestones.map(m => m.id);
-      await api.post('/implementations/templates/bulk-reorder', ids);
-      showNotification("Order saved successfully", "success");
-    } catch (err) {
-      console.error("Failed to save order", err);
+      if (editingTask) {
+        await api.patch(`/implementations/templates/${editingTask.id}`, taskFormData);
+        showNotification("Task updated", "success");
+      } else {
+        await api.post('/implementations/templates/', taskFormData);
+        showNotification("Task added to section", "success");
+      }
+      setIsTaskModalOpen(false);
+      setEditingTask(null);
+      fetchData();
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteTask = async (id: number) => {
+    if (window.confirm("Remove this task?")) {
+      await api.delete(`/implementations/templates/${id}`);
+      fetchData();
     }
   };
 
-  const openEditModal = (m: any) => {
-    setSelectedMilestone(m);
-    setEditFormData({
-      task_name: m.task_name,
-      section: m.section,
-      weight: m.weight
-    });
-    setIsEditModalOpen(true);
+  const openTaskModal = (sectionId: number, task?: any) => {
+    if (task) {
+      setEditingTask(task);
+      setTaskFormData({ task_name: task.task_name, weight: task.weight, section_id: sectionId });
+    } else {
+      setEditingTask(null);
+      setTaskFormData({ task_name: '', weight: 0, section_id: sectionId });
+    }
+    setIsTaskModalOpen(true);
   };
 
-  const totalPercentage = milestones.reduce((sum, m) => sum + m.weight, 0);
+  const totalProjectWeight = sections.reduce((sum, s) => sum + s.weight, 0);
 
   if (currentUser?.role === 'ENGINEER') return <div className="p-10">Access Denied</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Master Milestone Template</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Drag handles to reorder. Configure default checklist and % weights.</p>
+          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Implementation Template Editor</h1>
+          <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Define main milestones and their sub-tasks with percentage weights.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => { setEditingSection(null); setSectionFormData({name:'', weight:0}); setIsSectionModalOpen(true); }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#111827', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}
         >
-          <Plus size={18} /> Add Task
+          <Plus size={18} /> New Main Milestone
         </button>
       </div>
 
-      {/* Summary Card */}
-      <div style={{ background: totalPercentage === 100 ? '#ecfdf5' : '#fff7ed', border: '1px solid', borderColor: totalPercentage === 100 ? '#10b981' : '#f97316', padding: '1.25rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <AlertCircle style={{ color: totalPercentage === 100 ? '#059669' : '#d97706' }} size={24} />
+      {/* Global Status */}
+      <div style={{ background: totalProjectWeight === 100 ? '#ecfdf5' : '#fff7ed', border: '1px solid', borderColor: totalProjectWeight === 100 ? '#10b981' : '#f97316', padding: '1rem 1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        {totalProjectWeight === 100 ? <CheckCircle2 size={24} color="#059669" /> : <AlertCircle size={24} color="#d97706" />}
         <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: totalPercentage === 100 ? '#065f46' : '#9a3412' }}>
-            Current Total: {totalPercentage.toFixed(1)}%
-          </h3>
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: totalPercentage === 100 ? '#047857' : '#c2410c' }}>
-            {totalPercentage === 100 
-              ? "Perfect! The template adds up to exactly 100%." 
-              : `Warning: The template should total exactly 100%. Adjust weights to fix the ${Math.abs(100 - totalPercentage).toFixed(1)}% difference.`}
+          <span style={{ fontWeight: 700, color: totalProjectWeight === 100 ? '#065f46' : '#9a3412' }}>Total Project Weight: {totalProjectWeight}%</span>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: totalProjectWeight === 100 ? '#047857' : '#c2410c' }}>
+            {totalProjectWeight === 100 ? "Valid 100% configuration." : `The sum of all main milestones must be exactly 100% (Current: ${totalProjectWeight}%).`}
           </p>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="text-center p-10">Loading template data...</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {milestones.map((m, index) => (
-            <div 
-              key={m.id} 
-              draggable
-              onDragStart={() => handleDragStart(index)}
-              onDragEnter={(e) => handleDragEnter(e, index)}
-              onDragEnd={handleDragEnd}
-              onDragOver={(e) => e.preventDefault()}
-              style={{ 
-                background: draggedItemIndex === index ? '#f8fafc' : 'white', 
-                opacity: draggedItemIndex === index ? 0.5 : 1,
-                borderRadius: '10px', 
-                border: '1px solid #e5e7eb', 
-                padding: '0.75rem 1.25rem', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '1rem', 
-                boxShadow: draggedItemIndex === index ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
-                cursor: 'grab',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-            >
-              <div style={{ color: '#d1d5db' }}>
-                <GripVertical size={20} />
-              </div>
-              
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <span style={{ fontSize: '0.6rem', fontWeight: 800, padding: '0.125rem 0.4rem', background: '#f1f5f9', color: '#475569', borderRadius: '4px', textTransform: 'uppercase' }}>{m.section}</span>
-                  <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600, color: '#111827' }}>{m.task_name}</h3>
+      {isLoading ? <div className="text-center p-20">Loading master template...</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '2rem' }}>
+          {sections.map(section => {
+            const tasksWeight = section.milestones.reduce((sum: number, m: any) => sum + m.weight, 0);
+            const isBalanced = Math.abs(tasksWeight - section.weight) < 0.01;
+
+            return (
+              <div key={section.id} style={{ background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                {/* Section Header */}
+                <div style={{ padding: '1.25rem', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Layout size={18} color="#1a56db" />
+                      <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>{section.name}</h2>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#1a56db', background: '#eff6ff', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Target: {section.weight}%</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: isBalanced ? '#059669' : '#d97706' }}>Sub-tasks: {tasksWeight}%</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button onClick={() => { setEditingSection(section); setSectionFormData({name: section.name, weight: section.weight}); setIsSectionModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0.4rem' }}><Edit2 size={16} /></button>
+                    <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', color: '#fecaca', cursor: 'pointer', padding: '0.4rem' }}><Trash2 size={16} /></button>
+                  </div>
                 </div>
-              </div>
 
-              <div style={{ background: '#f0fdf4', color: '#166534', padding: '0.3rem 0.7rem', borderRadius: '6px', fontWeight: 700, fontSize: '0.8125rem', minWidth: '55px', textAlign: 'center' }}>
-                {m.weight}%
+                {/* Tasks List */}
+                <div style={{ padding: '1rem' }}>
+                  {section.milestones.map((task: any) => (
+                    <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid #f3f4f6', marginBottom: '0.5rem' }}>
+                      <GripVertical size={16} color="#d1d5db" />
+                      <div style={{ flex: 1, fontSize: '0.875rem', fontWeight: 500 }}>{task.task_name}</div>
+                      <div style={{ fontWeight: 700, color: '#4b5563', fontSize: '0.875rem' }}>{task.weight}%</div>
+                      <div style={{ display: 'flex', gap: '0.1rem' }}>
+                         <button onClick={() => openTaskModal(section.id, task)} style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', padding: '0.3rem' }}><Edit2 size={14} /></button>
+                         <button onClick={() => deleteTask(task.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.3rem' }}><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <button 
+                    onClick={() => openTaskModal(section.id)}
+                    style={{ width: '100%', padding: '0.75rem', background: 'transparent', border: '2px dashed #e5e7eb', borderRadius: '8px', color: '#6b7280', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  >
+                    <Plus size={14} /> Add Sub-task
+                  </button>
+                </div>
+                
+                {!isBalanced && (
+                   <div style={{ padding: '0.5rem 1rem', background: '#fff7ed', color: '#c2410c', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                     <AlertCircle size={12} /> Tasks sum ({tasksWeight}%) does not match section target ({section.weight}%)
+                   </div>
+                )}
               </div>
-
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                <button onClick={() => openEditModal(m)} style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', padding: '0.5rem' }} title="Edit"><Edit2 size={16} /></button>
-                <button onClick={() => handleDelete(m.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.5rem' }} title="Delete"><Trash2 size={16} /></button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Add Modal */}
-      {isModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Add Milestone Task</h2>
-              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
-            </div>
-            <form onSubmit={handleAdd}>
+      {/* Section Modal */}
+      {isSectionModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '450px', padding: '2rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>{editingSection ? 'Edit Main Milestone' : 'New Main Milestone'}</h2>
+            <form onSubmit={handleSectionSubmit}>
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Task Name</label>
-                <input required type="text" value={formData.task_name} onChange={e => setFormData({...formData, task_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Section</label>
-                <select value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="DMS Implementation">DMS Implementation</option>
-                  <option value="Planning">Planning</option>
-                  <option value="Configuration">Configuration</option>
-                  <option value="Testing">Testing</option>
-                  <option value="Training">Training</option>
-                  <option value="Admin Training">Admin Training</option>
-                  <option value="Sign Off">Sign Off</option>
-                </select>
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Milestone Name</label>
+                <input required type="text" value={sectionFormData.name} onChange={e => setSectionFormData({...sectionFormData, name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} placeholder="e.g. Contentverse Installation" />
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Weight (%)</label>
-                <input required type="number" step="0.1" value={formData.weight} onChange={e => setFormData({...formData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Total Weight (%)</label>
+                <input required type="number" step="0.1" value={sectionFormData.weight} onChange={e => setSectionFormData({...sectionFormData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Save to Template</button>
+                <button type="button" onClick={() => setIsSectionModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#111827', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>{editingSection ? 'Update' : 'Create'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Edit Modal */}
-      {isEditModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Edit Milestone Task</h2>
-              <button onClick={() => setIsEditModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
-            </div>
-            <form onSubmit={handleEdit}>
+      {/* Task Modal */}
+      {isTaskModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
+          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '450px', padding: '2rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>{editingTask ? 'Edit Sub-task' : 'Add Sub-task'}</h2>
+            <form onSubmit={handleTaskSubmit}>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Task Name</label>
-                <input required type="text" value={editFormData.task_name} onChange={e => setEditFormData({...editFormData, task_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Section</label>
-                <select value={editFormData.section} onChange={e => setEditFormData({...editFormData, section: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="DMS Implementation">DMS Implementation</option>
-                  <option value="Planning">Planning</option>
-                  <option value="Configuration">Configuration</option>
-                  <option value="Testing">Testing</option>
-                  <option value="Training">Training</option>
-                  <option value="Admin Training">Admin Training</option>
-                  <option value="Sign Off">Sign Off</option>
-                </select>
+                <input required type="text" value={taskFormData.task_name} onChange={e => setTaskFormData({...taskFormData, task_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Weight (%)</label>
-                <input required type="number" step="0.1" value={editFormData.weight} onChange={e => setEditFormData({...editFormData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Task Weight (%)</label>
+                <p style={{ margin: '0 0 0.5rem', fontSize: '0.7rem', color: '#6b7280' }}>This is the percentage contribution to the TOTAL project.</p>
+                <input required type="number" step="0.1" value={taskFormData.weight} onChange={e => setTaskFormData({...taskFormData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setIsEditModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Update Milestone</button>
+                <button type="button" onClick={() => setIsTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>{editingTask ? 'Update' : 'Add Task'}</button>
               </div>
             </form>
           </div>

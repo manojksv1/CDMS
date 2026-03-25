@@ -5,7 +5,7 @@ from datetime import date, datetime
 # --- Task Schemas ---
 class ImplementationTaskBase(BaseModel):
     task_name: str
-    section: Optional[str] = None
+    section_name: Optional[str] = None
     weight: float
     is_completed: bool = False
 
@@ -37,7 +37,7 @@ class ImplementationLog(ImplementationLogBase):
     implementation_id: int
     user_id: Optional[int] = None
     created_at: datetime
-    user_name: Optional[str] = None # Added via service
+    user_name: Optional[str] = None 
 
     class Config:
         from_attributes = True
@@ -71,7 +71,7 @@ class ImplementationUpdate(BaseModel):
 class Implementation(ImplementationBase):
     id: int
     current_percentage: float
-    assigned_user_name: Optional[str] = None # For frontend display
+    assigned_user_name: Optional[str] = None 
     
     class Config:
         from_attributes = True
@@ -80,24 +80,44 @@ class ImplementationDetail(Implementation):
     logs: List[ImplementationLog] = []
     tasks: List[ImplementationTask] = []
 
-# --- Global Milestone (Template) Schemas ---
+# --- Section-based Template Schemas ---
+
 class GlobalMilestoneBase(BaseModel):
     task_name: str
-    section: str
     weight: float
     order: int = 0
+    section_id: Optional[int] = None
 
 class GlobalMilestoneCreate(GlobalMilestoneBase):
     pass
 
 class GlobalMilestoneUpdate(BaseModel):
     task_name: Optional[str] = None
-    section: Optional[str] = None
     weight: Optional[float] = None
     order: Optional[int] = None
+    section_id: Optional[int] = None
 
 class GlobalMilestone(GlobalMilestoneBase):
     id: int
+    class Config:
+        from_attributes = True
 
+class MilestoneSectionBase(BaseModel):
+    name: str
+    weight: float
+    order: int = 0
+
+class MilestoneSectionCreate(MilestoneSectionBase):
+    pass
+
+class MilestoneSectionUpdate(BaseModel):
+    name: Optional[str] = None
+    weight: Optional[float] = None
+    order: Optional[int] = None
+
+class MilestoneSection(MilestoneSectionBase):
+    id: int
+    milestones: List[GlobalMilestone] = []
+    
     class Config:
         from_attributes = True

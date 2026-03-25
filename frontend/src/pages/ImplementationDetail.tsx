@@ -18,13 +18,17 @@ import {
   ChevronUp,
   RefreshCw
 } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ImplementationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Modal states
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(["DMS Implementation"]);
   
   const [logFormData, setLogFormData] = useState({
@@ -111,14 +115,13 @@ const ImplementationDetail: React.FC = () => {
   };
 
   const handleSyncTemplate = async () => {
-    if (window.confirm("This will add any new milestones from the master template to this project. Existing progress will be saved. Continue?")) {
-      try {
-        const res = await api.post(`/implementations/${id}/sync-template`);
-        showNotification(res.data.message, "success");
-        fetchProject();
-      } catch (err) {
-        console.error(err);
-      }
+    setIsSyncModalOpen(false);
+    try {
+      const res = await api.post(`/implementations/${id}/sync-template`);
+      showNotification(res.data.message, "success");
+      fetchProject();
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -127,7 +130,7 @@ const ImplementationDetail: React.FC = () => {
 
   // Group tasks by section
   const sections = project.tasks.reduce((acc: any, task: any) => {
-    const s = task.section || "General";
+    const s = task.section_name || "General";
     if (!acc[s]) acc[s] = [];
     acc[s].push(task);
     return acc;
@@ -135,6 +138,16 @@ const ImplementationDetail: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      <ConfirmModal 
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onConfirm={handleSyncTemplate}
+        title="Sync Master Template"
+        message="This will add any new milestones from the master template to this project. Existing progress will be saved. Continue?"
+        type="info"
+        confirmText="Sync Now"
+      />
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
         <button onClick={() => navigate('/implementations')} style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -150,7 +163,7 @@ const ImplementationDetail: React.FC = () => {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.75rem' }}>
           <button 
-            onClick={handleSyncTemplate}
+            onClick={() => setIsSyncModalOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#059669' }}
           >
             <RefreshCw size={18} /> Sync Template
@@ -314,7 +327,7 @@ const ImplementationDetail: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Version Details</label>
-                  <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
