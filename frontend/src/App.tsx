@@ -9,8 +9,8 @@ import Users from './pages/Users';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = useAuthStore((state) => state.token);
-  if (!token) {
+  const user = useAuthStore((state) => state.user);
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;

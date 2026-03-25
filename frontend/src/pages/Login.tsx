@@ -28,15 +28,10 @@ const Login: React.FC = () => {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
       
-      const token = response.data.access_token;
+      const user = response.data;
       
-      // Temporary setup in state, but wait, we need the user object
-      // Let's fetch the /users/me to get the full profile
-      const userResponse = await api.get('/users/me', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      login(token, userResponse.data);
+      // Token is now in HttpOnly cookie, we just pass empty string for token
+      login('', user);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Invalid credentials or server error.');

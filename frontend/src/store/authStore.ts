@@ -14,18 +14,16 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: localStorage.getItem('token'),
   user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') as string) : null,
-  
-  login: (token, user) => {
-    localStorage.setItem('token', token);
+  token: null, // Token is now in HttpOnly cookie
+
+  login: (_, user) => {
     localStorage.setItem('user', JSON.stringify(user));
-    set({ token, user });
+    set({ user });
   },
   
   logout: () => {
-    localStorage.removeItem('token');
     localStorage.removeItem('user');
-    set({ token: null, user: null });
+    set({ user: null });
   },
 }));
