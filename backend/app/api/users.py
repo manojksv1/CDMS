@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+from datetime import datetime
 from app.core.database import get_db
 from app.schemas.user import UserCreate, UserResponse, UserUpdate, UserPasswordReset
 from app.services import user_service
@@ -43,6 +44,16 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), c
 @router.get("/me", response_model=UserResponse)
 def read_user_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/{user_id}/logout-all")
+def logout_user_from_all_devices(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_admin)):
+    target_user = user_service.get_user(db, user_id)
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    target_user.last_logout = datetime.utcnow()
+    db.commit()
+    return {"message": f"All sessions for user {target_user.name} have been invalidated"}
 
 @router.delete("/{user_id}", response_model=UserResponse)
 def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_admin)):

@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { Plus, X, Trash2, Database, Upload, Download, Edit2 } from 'lucide-react';
+import { Plus, X, Trash2, Database, Upload, Download, Edit2, ShieldAlert } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 
 const Users: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
@@ -13,6 +14,23 @@ const Users: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  
+  // Confirmation states
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+    confirmText: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'warning',
+    confirmText: 'Confirm'
+  });
   
   const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
   const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
@@ -47,7 +65,6 @@ const Users: React.FC = () => {
       showNotification("Backup downloaded successfully!", "success");
     } catch (err) {
       console.error(err);
-      // Note: error notification is handled by the api interceptor
     } finally {
       setIsMaintenanceActive(false);
     }
@@ -57,31 +74,34 @@ const Users: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!window.confirm("WARNING: This will overwrite your current database. Are you absolutely sure?")) {
-      e.target.value = '';
-      return;
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Restore Database',
+      message: 'WARNING: This will overwrite your current database. This process is irreversible. Are you absolutely sure?',
+      type: 'danger',
+      confirmText: 'Upload & Restore',
+      onConfirm: async () => {
+        setIsMaintenanceActive(true);
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        const formData = new FormData();
+        formData.append('file', file);
 
-    setIsMaintenanceActive(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      await api.post('/system/restore', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      showNotification("Restore process started. The database will be ready in a few seconds.", "info");
-      
-      // Wait a bit then reload
-      setTimeout(() => {
-        window.location.reload();
-      }, 5000);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsMaintenanceActive(false);
-      e.target.value = '';
-    }
+        try {
+          await api.post('/system/restore', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+          showNotification("Restore process started. The database will be ready in a few seconds.", "info");
+          setTimeout(() => {
+            window.location.reload();
+          }, 5000);
+        } catch (err: any) {
+          console.error(err);
+        } finally {
+          setIsMaintenanceActive(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      }
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -123,16 +143,24 @@ const Users: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm("Are you sure you want to delete this user?")) {
-      try {
-        await api.delete(`/users/${id}`);
-        showNotification("User deleted successfully!", "success");
-        fetchUsers();
-      } catch (err: any) {
-        console.error(err);
+  const handleDelete = async (id: number, name: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete User',
+      message: `Are you sure you want to delete user "${name}"? This action cannot be undone.`,
+      type: 'danger',
+      confirmText: 'Delete User',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.delete(`/users/${id}`);
+          showNotification("User deleted successfully!", "success");
+          fetchUsers();
+        } catch (err: any) {
+          console.error(err);
+        }
       }
-    }
+    });
   };
 
   const openEditModal = (user: any) => {
@@ -141,8 +169,36 @@ const Users: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
+  const handleLogoutAll = async (id: number, name: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Revoke All Sessions',
+      message: `Are you sure you want to invalidate all active sessions for ${name}? This will force the user to log in again on all devices.`,
+      type: 'warning',
+      confirmText: 'Revoke Sessions',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.post(`/users/${id}/logout-all`);
+          showNotification(`All sessions for ${name} have been revoked.`, "success");
+        } catch (err: any) {
+          console.error(err);
+        }
+      }
+    });
+  };
+
   return (
     <div>
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        confirmText={confirmConfig.confirmText}
+      />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827' }}>User Management</h1>
         {currentUser?.role === 'ADMIN' && (
@@ -193,6 +249,15 @@ const Users: React.FC = () => {
                         >
                           <Edit2 size={16} />
                         </button>
+                        {currentUser.id !== u.id && (
+                          <button 
+                            onClick={() => handleLogoutAll(u.id, u.name)}
+                            style={{ background: 'none', border: 'none', color: '#d03801', cursor: 'pointer' }}
+                            title="Logout from all devices"
+                          >
+                            <ShieldAlert size={16} />
+                          </button>
+                        )}
                         {currentUser.id !== u.id && (
                           <button 
                             onClick={() => handleDelete(u.id)}

@@ -98,6 +98,12 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     
+    # Check if refresh token was issued before the last logout
+    iat = payload.get("iat")
+    if iat and user.last_logout:
+        if iat < int(user.last_logout.timestamp()):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session has been invalidated")
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role}, expires_delta=access_token_expires

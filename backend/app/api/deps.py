@@ -33,6 +33,13 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = user_service.get_user(db, user_id=token_data.id)
     if user is None:
         raise credentials_exception
+    
+    # Check if token was issued before the last logout (session invalidation)
+    iat = payload.get("iat")
+    if iat and user.last_logout:
+        if iat < int(user.last_logout.timestamp()):
+            raise credentials_exception
+            
     return user
 
 def get_current_active_admin(current_user = Depends(get_current_user)):
