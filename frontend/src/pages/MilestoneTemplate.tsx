@@ -11,6 +11,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import ConfirmModal from '../components/ConfirmModal';
 
 const MilestoneTemplate: React.FC = () => {
   const [sections, setSections] = useState<any[]>([]);
@@ -19,6 +20,16 @@ const MilestoneTemplate: React.FC = () => {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<any>(null);
   const [editingTask, setEditingTask] = useState<any>(null);
+
+  // Confirm Modal State
+  const [confirmConfig, setConfirmConfig] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'danger' as 'danger' | 'warning' | 'info',
+    confirmText: 'Delete'
+  });
 
   const currentUser = useAuthStore(state => state.user);
 
@@ -43,7 +54,6 @@ const MilestoneTemplate: React.FC = () => {
     }
   };
 
-  // --- Section CRUD ---
   const handleSectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -61,14 +71,23 @@ const MilestoneTemplate: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  const deleteSection = async (id: number) => {
-    if (window.confirm("Deleting a section will delete all tasks inside it. Continue?")) {
-      await api.delete(`/implementations/sections/${id}`);
-      fetchData();
-    }
+  const deleteSection = (id: number) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Section',
+      message: 'Deleting a section will delete all tasks inside it. Continue?',
+      type: 'danger',
+      confirmText: 'Delete Section',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.delete(`/implementations/sections/${id}`);
+          fetchData();
+        } catch (err) { console.error(err); }
+      }
+    });
   };
 
-  // --- Task CRUD ---
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -85,11 +104,21 @@ const MilestoneTemplate: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  const deleteTask = async (id: number) => {
-    if (window.confirm("Remove this task?")) {
-      await api.delete(`/implementations/templates/${id}`);
-      fetchData();
-    }
+  const deleteTask = (id: number) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Remove Task',
+      message: 'Remove this task? New projects will no longer include this milestone.',
+      type: 'danger',
+      confirmText: 'Remove Task',
+      onConfirm: async () => {
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        try {
+          await api.delete(`/implementations/templates/${id}`);
+          fetchData();
+        } catch (err) { console.error(err); }
+      }
+    });
   };
 
   const openTaskModal = (sectionId: number, task?: any) => {
@@ -109,6 +138,16 @@ const MilestoneTemplate: React.FC = () => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <ConfirmModal 
+        isOpen={confirmConfig.isOpen}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        confirmText={confirmConfig.confirmText}
+      />
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Implementation Template Editor</h1>

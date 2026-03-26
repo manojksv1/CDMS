@@ -22,7 +22,13 @@ def run_restore(temp_file: str):
         # 2. Drop and Restore
         restore_cmd = f"psql \"{db_url}\" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' && psql \"{db_url}\" -f {temp_file}"
         subprocess.run(restore_cmd, shell=True)
-        print("Background restore completed.")
+        
+        # 3. Upgrade Schema using Alembic to ensure the restored DB is compatible with current code
+        print("Running database migrations on restored data...")
+        alembic_cmd = "alembic upgrade head"
+        subprocess.run(alembic_cmd, shell=True)
+        
+        print("Background restore and schema upgrade completed.")
     except Exception as e:
         print(f"Background restore failed: {e}")
     finally:

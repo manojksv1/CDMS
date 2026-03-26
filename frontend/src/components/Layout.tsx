@@ -36,19 +36,21 @@ const Layout: React.FC = () => {
             <span>Dashboard</span>
           </NavLink>
 
-          <NavLink to="/implementations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <ClipboardList size={20} />
-            <span>Implementations</span>
-          </NavLink>
+          {(user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
+            <NavLink to="/implementations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <ClipboardList size={20} />
+              <span>Implementations</span>
+            </NavLink>
+          )}
 
-          {user?.role !== 'ENGINEER' && (
+          {user?.role !== 'ENGINEER' && (user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
             <NavLink to="/implementations/template" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Wrench size={20} />
               <span>Milestone Template</span>
             </NavLink>
           )}
           
-          {user?.role !== 'ENGINEER' && (
+          {user?.role !== 'ENGINEER' && (user?.software_access === 'BOTH' || user?.software_access === 'INSTALLATION') && (
             <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Users size={20} />
               <span>Clients</span>

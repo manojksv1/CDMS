@@ -157,7 +157,22 @@ def delete_milestone_section(db: Session, section_id: int):
 def get_global_milestones(db: Session):
     return db.query(GlobalMilestone).order_by(GlobalMilestone.order).all()
 
+from fastapi import HTTPException
+
+# ...
+
 def create_global_milestone(db: Session, milestone: GlobalMilestoneCreate):
+    # Bug Fix 1: Check if section weight is exceeded
+    if milestone.section_id:
+        section = db.query(MilestoneSection).filter(MilestoneSection.id == milestone.section_id).first()
+        if section:
+            current_tasks_weight = sum(m.weight for m in section.milestones)
+            if current_tasks_weight + milestone.weight > section.weight:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Cannot add task. Total weight in section '{section.name}' would exceed its limit of {section.weight}%."
+                )
+
     db_m = GlobalMilestone(**milestone.model_dump())
     db.add(db_m)
     db.commit()
@@ -167,7 +182,21 @@ def create_global_milestone(db: Session, milestone: GlobalMilestoneCreate):
 def update_global_milestone(db: Session, milestone_id: int, update: GlobalMilestoneUpdate):
     db_m = db.query(GlobalMilestone).filter(GlobalMilestone.id == milestone_id).first()
     if not db_m: return None
-    for key, value in update.model_dump(exclude_unset=True).items():
+    
+    update_data = update.model_dump(exclude_unset=True)
+    
+    # Bug Fix 1: Check weight limit on update
+    if 'weight' in update_data and db_m.section_id:
+        section = db.query(MilestoneSection).filter(MilestoneSection.id == db_m.section_id).first()
+        if section:
+            other_tasks_weight = sum(m.weight for m in section.milestones if m.id != milestone_id)
+            if other_tasks_weight + update_data['weight'] > section.weight:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Update failed. Section '{section.name}' limit of {section.weight}% would be exceeded."
+                )
+
+    for key, value in update_data.items():
         setattr(db_m, key, value)
     db.commit()
     db.refresh(db_m)

@@ -4,6 +4,7 @@ interface User {
   id: number;
   name: string;
   role: 'ADMIN' | 'MANAGER' | 'ENGINEER';
+  software_access: 'INSTALLATION' | 'IMPLEMENTATION' | 'BOTH';
 }
 
 interface AuthState {

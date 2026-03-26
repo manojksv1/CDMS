@@ -32,8 +32,8 @@ const Users: React.FC = () => {
     confirmText: 'Confirm'
   });
   
-  const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
-  const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', password: '' });
+  const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
@@ -110,7 +110,7 @@ const Users: React.FC = () => {
     try {
       await api.post('/users/', formData);
       setIsModalOpen(false);
-      setFormData({ name: '', role: 'ENGINEER', password: '' });
+      setFormData({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
       showNotification("User created successfully!", "success");
       fetchUsers();
     } catch (err: any) {
@@ -126,7 +126,8 @@ const Users: React.FC = () => {
     try {
       const payload: any = {
         name: editFormData.name,
-        role: editFormData.role
+        role: editFormData.role,
+        software_access: editFormData.software_access
       };
       if (editFormData.password) {
         payload.password = editFormData.password;
@@ -165,7 +166,7 @@ const Users: React.FC = () => {
 
   const openEditModal = (user: any) => {
     setSelectedUser(user);
-    setEditFormData({ name: user.name, role: user.role, password: '' });
+    setEditFormData({ name: user.name, role: user.role, software_access: user.software_access || 'BOTH', password: '' });
     setIsEditModalOpen(true);
   };
 
@@ -218,6 +219,7 @@ const Users: React.FC = () => {
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>ID</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Name</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Role</th>
+              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Software Access</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500, textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
@@ -236,6 +238,19 @@ const Users: React.FC = () => {
                     color: u.role === 'ADMIN' ? '#9b1c1c' : (u.role === 'MANAGER' ? '#1e429f' : '#03543f')
                   }}>
                     {u.role}
+                  </span>
+                </td>
+                <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>
+                  <span style={{ 
+                    padding: '0.125rem 0.625rem', 
+                    borderRadius: '4px', 
+                    fontSize: '0.7rem', 
+                    fontWeight: 600,
+                    backgroundColor: '#f3f4f6',
+                    color: '#374151',
+                    border: '1px solid #d1d5db'
+                  }}>
+                    {u.software_access === 'BOTH' ? 'All Software' : (u.software_access === 'INSTALLATION' ? 'Clients/Installation Tracking' : 'Implementation Tracker')}
                   </span>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
@@ -275,7 +290,7 @@ const Users: React.FC = () => {
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={4} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
+                <td colSpan={5} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>
                   No users found or unauthorized to view.
                 </td>
               </tr>
@@ -360,6 +375,14 @@ const Users: React.FC = () => {
                   {formData.role === 'ADMIN' && "Full access. Can manage users, clients, and all tasks."}
                 </div>
               </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Software Access *</label>
+                <select required value={formData.software_access} onChange={e => setFormData({...formData, software_access: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  <option value="BOTH">All Software (Both)</option>
+                  <option value="INSTALLATION">Clients & Installation Tracking Only</option>
+                  <option value="IMPLEMENTATION">Implementation Tracker Only</option>
+                </select>
+              </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Password *</label>
                 <input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
@@ -402,6 +425,14 @@ const Users: React.FC = () => {
                   {editFormData.role === 'MANAGER' && "Can view all data, create tasks, and assign work to Engineers."}
                   {editFormData.role === 'ADMIN' && "Full access. Can manage users, clients, and all tasks."}
                 </div>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Software Access</label>
+                <select required value={editFormData.software_access} onChange={e => setEditFormData({...editFormData, software_access: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  <option value="BOTH">All Software (Both)</option>
+                  <option value="INSTALLATION">Clients & Installation Tracking Only</option>
+                  <option value="IMPLEMENTATION">Implementation Tracker Only</option>
+                </select>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>New Password (leave blank to keep current)</label>

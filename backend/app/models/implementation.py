@@ -21,6 +21,7 @@ class Implementation(Base):
     # Current Status
     status = Column(String, default="InProgress") # InProgress, OnHold, Live, Completed
     current_percentage = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
     logs = relationship("ImplementationLog", backref="implementation", cascade="all, delete-orphan")
@@ -49,10 +50,11 @@ class ImplementationTask(Base):
     implementation_id = Column(Integer, ForeignKey("implementations.id", ondelete="CASCADE"), nullable=False)
     
     task_name = Column(String, nullable=False)
-    section_name = Column(String, nullable=True) # Keeping for display simplicity
+    section_name = Column(String, nullable=True) 
     weight = Column(Float, nullable=False)
     is_completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class MilestoneSection(Base):
     __tablename__ = "milestone_sections"

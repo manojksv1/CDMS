@@ -262,14 +262,21 @@ const ImplementationDetail: React.FC = () => {
                         style={{ 
                           display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', 
                           background: task.is_completed ? '#f0fdf4' : 'transparent', transition: 'all 0.2s', border: '1px solid',
-                          borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem'
+                          borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem',
+                          position: 'relative'
                         }}
                       >
                         <div style={{ marginTop: '0.125rem' }}>
                           {task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />}
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
+                            {/* NEW Detection: If task created after initial project setup */}
+                            {new Date(task.created_at).getTime() > new Date(project.created_at).getTime() + 60000 && (
+                              <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#1a56db', color: 'white', padding: '0.1rem 0.3rem', borderRadius: '4px', textTransform: 'uppercase' }}>New</span>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
                             <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{task.weight}%</span>
                             {task.is_completed && task.completed_at && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
@@ -327,7 +334,7 @@ const ImplementationDetail: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Version Details</label>
-                  <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>

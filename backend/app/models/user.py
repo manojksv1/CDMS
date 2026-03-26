@@ -8,11 +8,17 @@ class UserRole(str, enum.Enum):
     MANAGER = "MANAGER"
     ENGINEER = "ENGINEER"
 
+class SoftwareAccess(str, enum.Enum):
+    INSTALLATION = "INSTALLATION"
+    IMPLEMENTATION = "IMPLEMENTATION"
+    BOTH = "BOTH"
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False, unique=True)
     role = Column(Enum(UserRole), nullable=False)
+    software_access = Column(Enum(SoftwareAccess), nullable=False, default=SoftwareAccess.BOTH)
     hashed_password = Column(String, nullable=False)
     last_logout = Column(DateTime, nullable=True)

@@ -19,6 +19,7 @@ class ImplementationTask(ImplementationTaskBase):
     id: int
     implementation_id: int
     completed_at: Optional[datetime] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
@@ -72,6 +73,7 @@ class Implementation(ImplementationBase):
     id: int
     current_percentage: float
     assigned_user_name: Optional[str] = None 
+    created_at: datetime
     
     class Config:
         from_attributes = True
