@@ -243,9 +243,9 @@ const Implementations: React.FC = () => {
                   <td style={{ padding: '1rem' }}>
                     <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>{imp.company_name}</div>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><User size={12} /> {imp.poc_name || 'No POC'}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><User size={12} /> POC: {imp.poc_name || 'None'}</span>
                       <span style={{ color: '#e5e7eb' }}>|</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#1a56db', fontWeight: 500 }}><UserCheck size={12} /> {imp.assigned_user_name || 'Unassigned'}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#1a56db', fontWeight: 500 }}><UserCheck size={12} /> Engineer: {imp.assigned_user_name || 'Unassigned'}</span>
                     </div>
                   </td>
                   <td style={{ padding: '1rem', width: '220px' }}>

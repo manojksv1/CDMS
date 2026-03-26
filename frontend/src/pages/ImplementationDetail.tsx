@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useNotificationStore } from '../store/notificationStore';
+import { useAuthStore } from '../store/authStore';
 import { 
   ArrowLeft, 
   Settings, 
@@ -23,7 +24,9 @@ import ConfirmModal from '../components/ConfirmModal';
 const ImplementationDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const currentUser = useAuthStore(state => state.user);
   
   // Modal states
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -42,29 +45,42 @@ const ImplementationDetail: React.FC = () => {
     po_date: '',
     start_date: '',
     expected_end_date: '',
-    status: ''
+    status: '',
+    assigned_user_id: ''
   });
 
   const showNotification = useNotificationStore(state => state.show);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchProject();
+    fetchData();
   }, [id]);
 
-  const fetchProject = async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get(`/implementations/${id}`);
-      setProject(res.data);
+      const requests: Promise<any>[] = [api.get(`/implementations/${id}`)];
+      if (currentUser?.role !== 'ENGINEER') {
+        requests.push(api.get('/users/'));
+      }
+      
+      const [projectRes, usersRes] = await Promise.all(requests);
+      
+      setProject(projectRes.data);
       setEditFormData({
-        poc_name: res.data.poc_name || '',
-        version_details: res.data.version_details || '',
-        po_date: res.data.po_date || '',
-        start_date: res.data.start_date || '',
-        expected_end_date: res.data.expected_end_date || '',
-        status: res.data.status || 'InProgress'
+        poc_name: projectRes.data.poc_name || '',
+        version_details: projectRes.data.version_details || '',
+        po_date: projectRes.data.po_date || '',
+        start_date: projectRes.data.start_date || '',
+        expected_end_date: projectRes.data.expected_end_date || '',
+        status: projectRes.data.status || 'InProgress',
+        assigned_user_id: projectRes.data.assigned_user_id ? String(projectRes.data.assigned_user_id) : ''
       });
+
+      if (usersRes) {
+        setUsers(usersRes.data.filter((u: any) => u.role === 'ENGINEER'));
+      }
+
     } catch (err) {
       console.error(err);
       showNotification("Failed to load project details", "error");
@@ -77,7 +93,7 @@ const ImplementationDetail: React.FC = () => {
   const handleToggleTask = async (taskId: number, currentStatus: boolean) => {
     try {
       await api.patch(`/implementations/tasks/${taskId}`, { is_completed: !currentStatus });
-      fetchProject();
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -96,7 +112,7 @@ const ImplementationDetail: React.FC = () => {
       showNotification("Daily log added!", "success");
       setIsLogModalOpen(false);
       setLogFormData({ date: new Date().toISOString().split('T')[0], remarks: '' });
-      fetchProject();
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -105,12 +121,20 @@ const ImplementationDetail: React.FC = () => {
   const handleUpdateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.patch(`/implementations/${id}`, editFormData);
+      const payload = { 
+        ...editFormData, 
+        assigned_user_id: editFormData.assigned_user_id ? parseInt(editFormData.assigned_user_id, 10) : null,
+        po_date: editFormData.po_date || null,
+        start_date: editFormData.start_date || null,
+        expected_end_date: editFormData.expected_end_date || null
+      };
+      
+      await api.patch(`/implementations/${id}`, payload);
       showNotification("Project updated successfully!", "success");
       setIsEditModalOpen(false);
-      fetchProject();
+      fetchData();
     } catch (err) {
-      console.error(err);
+      console.error("UPDATE FAILED:", err); 
     }
   };
 
@@ -119,7 +143,7 @@ const ImplementationDetail: React.FC = () => {
     try {
       const res = await api.post(`/implementations/${id}/sync-template`);
       showNotification(res.data.message, "success");
-      fetchProject();
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -156,8 +180,9 @@ const ImplementationDetail: React.FC = () => {
         <div>
           <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', margin: 0 }}>{project.company_name}</h1>
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><User size={16} /> {project.poc_name || 'No POC'}</span>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><TrendingUp size={16} /> {project.version_details || 'No Version'}</span>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><User size={16} /> POC: {project.poc_name || 'None'}</span>
+            <span style={{ fontSize: '0.875rem', color: '#1a56db', display: 'flex', alignItems: 'center', gap: '0.375rem', fontWeight: 500 }}><User size={16} /> Engineer: {project.assigned_user_name || 'Unassigned'}</span>
+            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><TrendingUp size={16} /> Version: {project.version_details || 'N/A'}</span>
             <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Target size={16} /> Status: <strong style={{ color: '#111827' }}>{project.status}</strong></span>
           </div>
         </div>
@@ -182,7 +207,7 @@ const ImplementationDetail: React.FC = () => {
             <span style={{ fontWeight: 700, fontSize: '1.25rem' }}>{Math.round(project.current_percentage)}%</span>
           </div>
           <div style={{ height: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '6px', overflow: 'hidden' }}>
-            <div style={{ width: `${project.current_percentage}%`, height: '100%', background: '#3b82f6', transition: 'width 0.8s ease-out' }} />
+            <div style={{ width: `${Math.min(100, project.current_percentage)}%`, height: '100%', background: '#3b82f6', transition: 'width 0.8s ease-out' }} />
           </div>
         </div>
         <div style={{ width: '1px', height: '40px', background: 'rgba(255,255,255,0.2)' }} />
@@ -332,12 +357,23 @@ const ImplementationDetail: React.FC = () => {
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>POC Name</label>
                   <input type="text" value={editFormData.poc_name} onChange={e => setEditFormData({...editFormData, poc_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
+                {currentUser?.role !== 'ENGINEER' && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Assign Engineer</label>
+                    <select value={editFormData.assigned_user_id} onChange={e => setEditFormData({...editFormData, assigned_user_id: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
+                      <option value="">-- Unassigned --</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Version Details</label>
                   <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status</label>
                   <select value={editFormData.status} onChange={e => setEditFormData({ ...editFormData, status: e.target.value })} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
@@ -347,16 +383,18 @@ const ImplementationDetail: React.FC = () => {
                     <option value="Completed">Completed</option>
                   </select>
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>PO Date</label>
                   <input type="date" value={editFormData.po_date} onChange={e => setEditFormData({...editFormData, po_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Start Date</label>
                   <input type="date" value={editFormData.start_date} onChange={e => setEditFormData({...editFormData, start_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Expected End</label>
                   <input type="date" value={editFormData.expected_end_date} onChange={e => setEditFormData({...editFormData, expected_end_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
