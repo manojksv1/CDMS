@@ -11,7 +11,12 @@ def get_user(db: Session, user_id: int):
 
 def create_user(db: Session, user: UserCreate):
     hashed_password = get_password_hash(user.password)
-    db_user = User(name=user.name, role=user.role, hashed_password=hashed_password)
+    db_user = User(
+        name=user.name, 
+        role=user.role, 
+        software_access=user.software_access,
+        hashed_password=hashed_password
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -39,6 +44,8 @@ def update_user(db: Session, user_id: int, user_update: any):
             db_user.name = user_update.name
         if user_update.role:
             db_user.role = user_update.role
+        if user_update.software_access:
+            db_user.software_access = user_update.software_access
         if user_update.password:
             db_user.hashed_password = get_password_hash(user_update.password)
         db.commit()

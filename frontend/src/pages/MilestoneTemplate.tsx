@@ -173,7 +173,7 @@ const MilestoneTemplate: React.FC = () => {
       </div>
 
       {isLoading ? <div className="text-center p-20">Loading master template...</div> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           {sections.map(section => {
             const tasksWeight = section.milestones.reduce((sum: number, m: any) => sum + m.weight, 0);
             const isBalanced = Math.abs(tasksWeight - section.weight) < 0.01;

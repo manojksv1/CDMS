@@ -250,7 +250,7 @@ const Users: React.FC = () => {
                     color: '#374151',
                     border: '1px solid #d1d5db'
                   }}>
-                    {u.software_access === 'BOTH' ? 'All Software' : (u.software_access === 'INSTALLATION' ? 'Clients/Installation Tracking' : 'Implementation Tracker')}
+                    {u.software_access === 'BOTH' ? 'All Software' : (u.software_access === 'INSTALLATION' ? 'Installation Tracker' : 'Implementation Tracker')}
                   </span>
                 </td>
                 <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right' }}>
@@ -377,9 +377,15 @@ const Users: React.FC = () => {
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Software Access *</label>
-                <select required value={formData.software_access} onChange={e => setFormData({...formData, software_access: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                <select 
+                  required 
+                  disabled={formData.role === 'ADMIN' || formData.role === 'ENGINEER'}
+                  value={(formData.role === 'ADMIN' || formData.role === 'ENGINEER') ? 'BOTH' : formData.software_access} 
+                  onChange={e => setFormData({...formData, software_access: e.target.value})} 
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: (formData.role === 'ADMIN' || formData.role === 'ENGINEER') ? '#f3f4f6' : 'white' }}
+                >
                   <option value="BOTH">All Software (Both)</option>
-                  <option value="INSTALLATION">Clients & Installation Tracking Only</option>
+                  <option value="INSTALLATION">Installation Tracker Only</option>
                   <option value="IMPLEMENTATION">Implementation Tracker Only</option>
                 </select>
               </div>
@@ -428,9 +434,15 @@ const Users: React.FC = () => {
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Software Access</label>
-                <select required value={editFormData.software_access} onChange={e => setEditFormData({...editFormData, software_access: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                <select 
+                  required 
+                  disabled={editFormData.role === 'ADMIN' || editFormData.role === 'ENGINEER'}
+                  value={(editFormData.role === 'ADMIN' || editFormData.role === 'ENGINEER') ? 'BOTH' : editFormData.software_access} 
+                  onChange={e => setEditFormData({...editFormData, software_access: e.target.value})} 
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: (editFormData.role === 'ADMIN' || editFormData.role === 'ENGINEER') ? '#f3f4f6' : 'white' }}
+                >
                   <option value="BOTH">All Software (Both)</option>
-                  <option value="INSTALLATION">Clients & Installation Tracking Only</option>
+                  <option value="INSTALLATION">Installation Tracker Only</option>
                   <option value="IMPLEMENTATION">Implementation Tracker Only</option>
                 </select>
               </div>

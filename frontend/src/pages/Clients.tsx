@@ -408,7 +408,7 @@ const Clients: React.FC = () => {
     <div style={{ position: 'relative', width: '100%', minHeight: '100%' }}>
       {/* Header with Search and Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Clients & Tracking Overview</h1>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Installation Tracker</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 10 }}>
           <input 
             type="text" 
@@ -958,7 +958,13 @@ const Clients: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Status *</label>
-                  <select required value={editTaskFormData.status} onChange={e => setEditTaskFormData({...editTaskFormData, status: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  <select 
+                    required 
+                    disabled={currentUser?.role === 'ENGINEER'}
+                    value={editTaskFormData.status} 
+                    onChange={e => setEditTaskFormData({...editTaskFormData, status: e.target.value})} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: currentUser?.role === 'ENGINEER' ? '#f3f4f6' : 'white', cursor: currentUser?.role === 'ENGINEER' ? 'not-allowed' : 'pointer' }}
+                  >
                     <option value="NOT_STARTED">Not Started / Pending</option>
                     <option value="IN_PROGRESS">In Progress</option>
                     <option value="BLOCKED">Blocked</option>
@@ -967,7 +973,13 @@ const Clients: React.FC = () => {
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Build Version</label>
-                  <input type="text" value={editTaskFormData.build_version} onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  <input 
+                    type="text" 
+                    disabled={currentUser?.role === 'ENGINEER'}
+                    value={editTaskFormData.build_version} 
+                    onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} 
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: currentUser?.role === 'ENGINEER' ? '#f3f4f6' : 'white', cursor: currentUser?.role === 'ENGINEER' ? 'not-allowed' : 'pointer' }} 
+                  />
                 </div>
               </div>
               {currentUser?.role !== 'ENGINEER' && (

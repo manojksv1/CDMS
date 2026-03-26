@@ -39,7 +39,7 @@ const Layout: React.FC = () => {
           {(user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
             <NavLink to="/implementations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <ClipboardList size={20} />
-              <span>Implementations</span>
+              <span>Implementation Tracker</span>
             </NavLink>
           )}
 
@@ -50,10 +50,10 @@ const Layout: React.FC = () => {
             </NavLink>
           )}
           
-          {user?.role !== 'ENGINEER' && (user?.software_access === 'BOTH' || user?.software_access === 'INSTALLATION') && (
+          {(user?.software_access === 'BOTH' || user?.software_access === 'INSTALLATION') && (
             <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <Users size={20} />
-              <span>Clients</span>
+              <span>Installation Tracker</span>
             </NavLink>
           )}
           
@@ -69,7 +69,7 @@ const Layout: React.FC = () => {
       <main className="main-content">
         <header className="top-header">
           <div className="header-title">
-            <h1>Installation Tracking</h1>
+            <h1>{window.location.pathname.includes('implementation') ? 'Implementation Tracker' : 'Installation Tracker'}</h1>
           </div>
           <div className="user-profile">
             <div className="user-info">
