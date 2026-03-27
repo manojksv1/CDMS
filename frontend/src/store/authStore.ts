@@ -5,6 +5,7 @@ interface User {
   name: string;
   role: 'ADMIN' | 'MANAGER' | 'ENGINEER';
   software_access: 'INSTALLATION' | 'IMPLEMENTATION' | 'BOTH';
+  timezone?: string;
 }
 
 interface AuthState {

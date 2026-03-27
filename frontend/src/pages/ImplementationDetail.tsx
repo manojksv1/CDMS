@@ -171,7 +171,12 @@ const ImplementationDetail: React.FC = () => {
   const handleAddLog = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post(`/implementations/${id}/logs`, logFormData);
+      // Always send today's date
+      const payload = {
+        ...logFormData,
+        date: new Date().toISOString().split('T')[0]
+      };
+      await api.post(`/implementations/${id}/logs`, payload);
       showNotification("Daily log added!", "success");
       setIsLogModalOpen(false);
       setLogFormData({ date: new Date().toISOString().split('T')[0], remarks: '' });
@@ -227,6 +232,31 @@ const ImplementationDetail: React.FC = () => {
   Object.keys(sections).forEach(sectionName => {
     sections[sectionName].sort((a: any, b: any) => a.id - b.id);
   });
+
+  const formatInTimezone = (dateStr: string) => {
+    if (!dateStr) return 'N/A';
+    
+    // Ensure the date string is treated as UTC if it lacks timezone info
+    const utcDateStr = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`;
+    const date = new Date(utcDateStr);
+    
+    const tz = currentUser?.timezone || 'UTC';
+    
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date);
+    } catch (e) {
+      // Fallback if timezone is invalid
+      return date.toLocaleString();
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -312,7 +342,11 @@ const ImplementationDetail: React.FC = () => {
                     <div style={{ position: 'absolute', left: '-2rem', top: '0.25rem', width: '12px', height: '12px', background: '#1a56db', borderRadius: '50%', transform: 'translateX(-50%)', border: '3px solid white', boxShadow: '0 0 0 1px #e5e7eb' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827' }}>{new Date(log.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#111827' }}>
+                            {formatInTimezone(log.created_at || log.date)}
+                          </span>
+                        </div>
                         <span style={{ padding: '0.125rem 0.5rem', background: '#eff6ff', color: '#1e40af', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>{Math.round(log.percentage_at_time)}%</span>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>By {log.user_name || 'System'}</span>
@@ -418,10 +452,6 @@ const ImplementationDetail: React.FC = () => {
               <button onClick={() => setIsLogModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
             </div>
             <form onSubmit={handleAddLog}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Date</label>
-                <input required type="date" value={logFormData.date} onChange={e => setLogFormData({...logFormData, date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Remarks / Activity</label>
                 <textarea required rows={4} value={logFormData.remarks} onChange={e => setLogFormData({...logFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} placeholder="What work was completed today?" />

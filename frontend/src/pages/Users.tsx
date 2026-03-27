@@ -32,8 +32,17 @@ const Users: React.FC = () => {
     confirmText: 'Confirm'
   });
   
-  const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
-  const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
+  const [formData, setFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '', timezone: 'UTC' });
+  const [editFormData, setEditFormData] = useState({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '', timezone: 'UTC' });
+  
+  const commonTimezones = [
+    { value: 'UTC', label: 'UTC (GMT)' },
+    { value: 'Asia/Kolkata', label: 'IST (India - GMT+5:30)' },
+    { value: 'America/New_York', label: 'EST (New York - GMT-5)' },
+    { value: 'Europe/London', label: 'GMT/BST (London)' },
+    { value: 'Asia/Dubai', label: 'GST (Dubai - GMT+4)' },
+    { value: 'Singapore', label: 'SGT (Singapore - GMT+8)' },
+  ];
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMaintenanceActive, setIsMaintenanceActive] = useState(false);
@@ -110,7 +119,7 @@ const Users: React.FC = () => {
     try {
       await api.post('/users/', formData);
       setIsModalOpen(false);
-      setFormData({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '' });
+      setFormData({ name: '', role: 'ENGINEER', software_access: 'BOTH', password: '', timezone: 'UTC' });
       showNotification("User created successfully!", "success");
       fetchUsers();
     } catch (err: any) {
@@ -127,16 +136,22 @@ const Users: React.FC = () => {
       const payload: any = {
         name: editFormData.name,
         role: editFormData.role,
-        software_access: editFormData.software_access
+        software_access: editFormData.software_access,
+        timezone: editFormData.timezone
       };
       if (editFormData.password) {
         payload.password = editFormData.password;
       }
       
-      await api.patch(`/users/${selectedUser.id}`, payload);
+      const res = await api.patch(`/users/${selectedUser.id}`, payload);
       setIsEditModalOpen(false);
       showNotification("User updated successfully!", "success");
       fetchUsers();
+      
+      // If editing self, update the auth store to reflect immediately (e.g. timezone)
+      if (currentUser?.id === selectedUser.id) {
+        useAuthStore.getState().login('', res.data);
+      }
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -166,7 +181,13 @@ const Users: React.FC = () => {
 
   const openEditModal = (user: any) => {
     setSelectedUser(user);
-    setEditFormData({ name: user.name, role: user.role, software_access: user.software_access || 'BOTH', password: '' });
+    setEditFormData({ 
+      name: user.name, 
+      role: user.role, 
+      software_access: user.software_access || 'BOTH', 
+      password: '',
+      timezone: user.timezone || 'UTC'
+    });
     setIsEditModalOpen(true);
   };
 
@@ -390,6 +411,14 @@ const Users: React.FC = () => {
                 </select>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Timezone *</label>
+                <select required value={formData.timezone} onChange={e => setFormData({...formData, timezone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  {commonTimezones.map(tz => (
+                    <option key={tz.value} value={tz.value}>{tz.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Password *</label>
                 <input required type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
@@ -444,6 +473,14 @@ const Users: React.FC = () => {
                   <option value="BOTH">All Software (Both)</option>
                   <option value="INSTALLATION">Installation Tracker Only</option>
                   <option value="IMPLEMENTATION">Implementation Tracker Only</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Timezone</label>
+                <select required value={editFormData.timezone} onChange={e => setEditFormData({...editFormData, timezone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                  {commonTimezones.map(tz => (
+                    <option key={tz.value} value={tz.value}>{tz.label}</option>
+                  ))}
                 </select>
               </div>
               <div style={{ marginBottom: '1.5rem' }}>

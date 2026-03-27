@@ -36,10 +36,9 @@ class ImplementationLog(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     
     date = Column(Date, default=datetime.utcnow().date())
+    created_at = Column(DateTime, default=datetime.utcnow)
     remarks = Column(String, nullable=False)
     percentage_at_time = Column(Float, nullable=True)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User")
 

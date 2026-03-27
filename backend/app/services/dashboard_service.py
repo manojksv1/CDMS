@@ -3,17 +3,21 @@ from sqlalchemy.sql import func
 from app.models.task import Task, TaskStatus
 from app.models.location import Location
 from app.models.client import Client
-from datetime import date
+from datetime import date, timedelta
 from app.schemas.dashboard import DashboardSummary, ClientProgress, LocationProgress, DelayedTaskDetail
 
+from app.models.implementation import Implementation
 from app.models.user import User, UserRole
 
 def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
+    # 1. Installation Tracker Data
     client_query = db.query(Client)
     loc_query = db.query(Location)
     task_query = db.query(Task)
     
     if user.role == UserRole.ENGINEER:
+        # Note: According to new requirements, Engineers shouldn't see this, 
+        # but we'll keep the logic as a fallback.
         client_query = client_query.join(Location).join(Task).filter(Task.assigned_to == user.id).distinct()
         loc_query = loc_query.join(Task).filter(Task.assigned_to == user.id).distinct()
         task_query = task_query.filter(Task.assigned_to == user.id)
@@ -22,14 +26,35 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     total_locations = loc_query.count()
     total_tasks = task_query.count()
     completed_tasks = task_query.filter(Task.status == TaskStatus.COMPLETED).count()
-    
-    # Delayed: due_date < today and status != COMPLETED
-    delayed_tasks = task_query.filter(
-        Task.due_date < date.today(),
-        Task.status != TaskStatus.COMPLETED
-    ).count()
-
+    delayed_tasks = task_query.filter(Task.due_date < date.today(), Task.status != TaskStatus.COMPLETED).count()
     overall_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
+
+    # 2. Implementation Tracker Data (New)
+    imp_query = db.query(Implementation)
+    if user.role == UserRole.ENGINEER:
+        imp_query = imp_query.filter(Implementation.assigned_user_id == user.id)
+    
+    implementations = imp_query.all()
+    total_imps = len(implementations)
+    live_imps = sum(1 for i in implementations if i.status == "Live")
+    
+    stagnant_count = 0
+    three_days_ago = date.today() - timedelta(days=3)
+    
+    status_counts = {"InProgress": 0, "OnHold": 0, "Live": 0, "Completed": 0}
+    
+    for i in implementations:
+        status_counts[i.status] = status_counts.get(i.status, 0) + 1
+        
+        # Stagnant Check: InProgress/OnHold AND no log in last 3 days
+        if i.status in ["InProgress", "OnHold"]:
+            from app.models.implementation import ImplementationLog
+            last_log = db.query(ImplementationLog).filter(
+                ImplementationLog.implementation_id == i.id
+            ).order_by(ImplementationLog.date.desc()).first()
+            
+            if not last_log or last_log.date < three_days_ago:
+                stagnant_count += 1
 
     return DashboardSummary(
         total_clients=total_clients,
@@ -37,7 +62,11 @@ def get_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         total_tasks=total_tasks,
         completed_tasks=completed_tasks,
         delayed_tasks=delayed_tasks,
-        overall_progress=round(overall_progress, 2)
+        overall_progress=round(overall_progress, 2),
+        total_implementations=total_imps,
+        live_implementations=live_imps,
+        stagnant_implementations=stagnant_count,
+        implementations_by_status=status_counts
     )
 
 def get_delayed_tasks(db: Session, user: User):

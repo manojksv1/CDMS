@@ -19,6 +19,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+// Dashboard Access Redirect
+const DashboardRedirect = () => {
+  const user = useAuthStore((state) => state.user);
+  if (user?.role === 'ENGINEER') {
+    return <Navigate to="/implementations" replace />;
+  }
+  return <Dashboard />;
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -33,7 +42,7 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Dashboard />} />
+          <Route index element={<DashboardRedirect />} />
           <Route path="implementations" element={<Implementations />} />
           <Route path="implementations/:id" element={<ImplementationDetail />} />
           <Route path="implementations/template" element={<MilestoneTemplate />} />

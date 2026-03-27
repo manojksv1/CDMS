@@ -31,10 +31,12 @@ const Layout: React.FC = () => {
         </div>
         
         <nav className="sidebar-nav">
-          <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <LayoutDashboard size={20} />
-            <span>Dashboard</span>
-          </NavLink>
+          {user?.role !== 'ENGINEER' && (
+            <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <LayoutDashboard size={20} />
+              <span>Dashboard</span>
+            </NavLink>
+          )}
 
           {(user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
             <NavLink to="/implementations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

@@ -19,12 +19,19 @@ class ClientProgress(BaseModel):
     overall_progress_percentage: float
 
 class DashboardSummary(BaseModel):
+    # Installation Tracker Stats (Current)
     total_clients: int
     total_locations: int
     total_tasks: int
     completed_tasks: int
     delayed_tasks: int
     overall_progress: float
+
+    # Implementation Tracker Stats (New)
+    total_implementations: int
+    live_implementations: int
+    stagnant_implementations: int
+    implementations_by_status: dict
 
 class DelayedTaskDetail(BaseModel):
     task: TaskResponse

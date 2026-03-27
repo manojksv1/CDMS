@@ -15,6 +15,7 @@ def create_user(db: Session, user: UserCreate):
         name=user.name, 
         role=user.role, 
         software_access=user.software_access,
+        timezone=user.timezone,
         hashed_password=hashed_password
     )
     db.add(db_user)
@@ -46,6 +47,8 @@ def update_user(db: Session, user_id: int, user_update: any):
             db_user.role = user_update.role
         if user_update.software_access:
             db_user.software_access = user_update.software_access
+        if user_update.timezone:
+            db_user.timezone = user_update.timezone
         if user_update.password:
             db_user.hashed_password = get_password_hash(user_update.password)
         db.commit()

@@ -6,12 +6,14 @@ class UserBase(BaseModel):
     name: str
     role: UserRole
     software_access: SoftwareAccess = SoftwareAccess.BOTH
+    timezone: str = "UTC"
 
 class UserCreate(UserBase):
     password: str
 
 class UserResponse(UserBase):
     id: int
+    timezone: str
 
     class Config:
         from_attributes = True
@@ -24,6 +26,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     software_access: Optional[SoftwareAccess] = None
     password: Optional[str] = None
+    timezone: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -33,3 +36,4 @@ class TokenData(BaseModel):
     id: Optional[int] = None
     role: Optional[UserRole] = None
     software_access: Optional[SoftwareAccess] = None
+    timezone: Optional[str] = None

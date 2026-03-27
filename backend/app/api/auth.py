@@ -34,7 +34,7 @@ def login_for_access_token(
     
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role}, expires_delta=access_token_expires
+        data={"sub": str(user.id), "role": user.role, "timezone": user.timezone}, expires_delta=access_token_expires
     )
     
     refresh_token_expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
@@ -106,7 +106,7 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role}, expires_delta=access_token_expires
+        data={"sub": str(user.id), "role": user.role, "timezone": user.timezone}, expires_delta=access_token_expires
     )
     
     response.set_cookie(

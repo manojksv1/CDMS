@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { Info } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const [summary, setSummary] = useState<any>(null);
@@ -23,29 +24,81 @@ const Dashboard: React.FC = () => {
 
   if (!summary) return <div style={{ padding: '2rem' }}>Loading dashboard...</div>;
 
+  const MetricCard = ({ title, value, color, info }: { title: string, value: any, color?: string, info: string }) => (
+    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+        <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>{title}</h3>
+        <div title={info} style={{ cursor: 'help', color: '#9ca3af', display: 'flex' }}>
+          <Info size={14} />
+        </div>
+      </div>
+      <p style={{ margin: 0, fontSize: '1.875rem', fontWeight: 700, color: color || '#111827' }}>{value}</p>
+    </div>
+  );
+
   return (
-    <div className="dashboard">
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', marginBottom: '1.5rem' }}>
+    <div className="dashboard" style={{ paddingBottom: '3rem' }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginBottom: '1.5rem' }}>
         Dashboard Summary
       </h1>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Total Clients</h3>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#111827' }}>{summary.total_clients}</p>
-        </div>
-        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tasks Completed</h3>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#111827' }}>{summary.completed_tasks} / {summary.total_tasks}</p>
-        </div>
-        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Overall Progress</h3>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#046c4e' }}>{summary.overall_progress}%</p>
-        </div>
-        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Delayed Tasks</h3>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '1.875rem', fontWeight: 600, color: '#c81e1e' }}>{summary.delayed_tasks}</p>
-        </div>
+      {/* Installation Tracker Section */}
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#4b5563', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        Installation Tracker
+      </h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+        <MetricCard 
+          title="Total Clients" 
+          value={summary.total_clients} 
+          info="Total number of unique clients in the system."
+        />
+        <MetricCard 
+          title="Tasks Completed" 
+          value={<>{summary.completed_tasks} <span style={{ fontSize: '1rem', color: '#9ca3af', fontWeight: 400 }}>/ {summary.total_tasks}</span></>}
+          info="Proportion of installation tasks marked as completed across all locations."
+        />
+        <MetricCard 
+          title="Installation Progress" 
+          value={`${summary.overall_progress}%`}
+          color="#10b981"
+          info="The average completion percentage of all installation tasks."
+        />
+        <MetricCard 
+          title="Delayed Tasks" 
+          value={summary.delayed_tasks}
+          color="#ef4444"
+          info="Tasks that are past their due date and not yet completed."
+        />
+      </div>
+
+      {/* Implementation Tracker Section */}
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#4b5563', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Implementation Tracker
+      </h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+        <MetricCard 
+          title="Total Projects" 
+          value={summary.total_implementations}
+          info="Total number of software implementation projects currently active or completed."
+        />
+        <MetricCard 
+          title="Live Projects" 
+          value={summary.live_implementations}
+          color="#10b981"
+          info="Projects that have been successfully deployed and are now 'Live'."
+        />
+        <MetricCard 
+          title="Stagnant Projects" 
+          value={summary.stagnant_implementations}
+          color={summary.stagnant_implementations > 0 ? '#f59e0b' : '#10b981'}
+          info="Projects 'In Progress' or 'On Hold' that haven't had a daily log entry in the last 3 days."
+        />
+        <MetricCard 
+          title="Active (In Progress)" 
+          value={summary.implementations_by_status?.InProgress || 0}
+          color="#3b82f6"
+          info="Total number of projects currently in the implementation phase."
+        />
       </div>
 
       <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', marginBottom: '1rem' }}>Delayed Tasks Breakdown</h2>

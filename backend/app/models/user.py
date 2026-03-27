@@ -22,3 +22,4 @@ class User(Base):
     software_access = Column(Enum(SoftwareAccess), nullable=False, default=SoftwareAccess.BOTH)
     hashed_password = Column(String, nullable=False)
     last_logout = Column(DateTime, nullable=True)
+    timezone = Column(String, default="UTC", nullable=False)
