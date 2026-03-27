@@ -2,8 +2,10 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
 
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL,
   withCredentials: true, // Crucial for HttpOnly cookies
 });
 
@@ -48,7 +50,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        await axios.post('http://localhost:8000/api/auth/refresh', {}, { withCredentials: true });
+        await axios.post(`${baseURL}/auth/refresh`, {}, { withCredentials: true });
         isRefreshing = false;
         processQueue(null);
         return api(originalRequest);

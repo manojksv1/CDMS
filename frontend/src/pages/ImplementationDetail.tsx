@@ -17,7 +17,10 @@ import {
   ListChecks,
   ChevronDown,
   ChevronUp,
-  RefreshCw
+  RefreshCw,
+  Save,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -33,6 +36,7 @@ const ImplementationDetail: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(["DMS Implementation"]);
+  const [pendingTasks, setPendingTasks] = useState<{[key: number]: boolean}>({});
   
   const [logFormData, setLogFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -90,13 +94,72 @@ const ImplementationDetail: React.FC = () => {
     }
   };
 
-  const handleToggleTask = async (taskId: number, currentStatus: boolean) => {
+  const handleToggleTask = (taskId: number, currentStatus: boolean) => {
+    // 1. Update project state locally for instant UI feedback
+    setProject((prev: any) => {
+      const updatedTasks = prev.tasks.map((t: any) => 
+        t.id === taskId ? { ...t, is_completed: !currentStatus, completed_at: !currentStatus ? new Date().toISOString() : null } : t
+      );
+      
+      // Calculate local percentage
+      const newPercentage = updatedTasks.reduce((acc: number, t: any) => 
+        acc + (t.is_completed ? t.weight : 0), 0
+      );
+
+      return { ...prev, tasks: updatedTasks, current_percentage: newPercentage };
+    });
+
+    // 2. Track as pending change
+    setPendingTasks(prev => {
+      const next = { ...prev };
+      next[taskId] = !currentStatus;
+      return next;
+    });
+  };
+
+  const handleSaveTasks = async () => {
+    const updates = Object.entries(pendingTasks).map(([id, is_completed]) => ({
+      id: parseInt(id),
+      is_completed
+    }));
+
+    if (updates.length === 0) return;
+
     try {
-      await api.patch(`/implementations/tasks/${taskId}`, { is_completed: !currentStatus });
-      fetchData();
+      await api.patch('/implementations/tasks-bulk/update', updates);
+      showNotification(`${updates.length} tasks updated successfully`, "success");
+      setPendingTasks({});
+      fetchData(); // Sync with server for full accuracy
     } catch (err) {
       console.error(err);
+      showNotification("Failed to save task updates", "error");
     }
+  };
+
+  const toggleSectionCompletion = (sectionName: string) => {
+    const sectionTasks = sections[sectionName];
+    const allCompleted = sectionTasks.every((t: any) => t.is_completed);
+    const targetStatus = !allCompleted;
+
+    const newPending = { ...pendingTasks };
+    
+    setProject((prev: any) => {
+      const updatedTasks = prev.tasks.map((t: any) => {
+        if (t.section_name === sectionName || (!t.section_name && sectionName === "General")) {
+          newPending[t.id] = targetStatus;
+          return { ...t, is_completed: targetStatus, completed_at: targetStatus ? new Date().toISOString() : null };
+        }
+        return t;
+      });
+
+      const newPercentage = updatedTasks.reduce((acc: number, t: any) => 
+        acc + (t.is_completed ? t.weight : 0), 0
+      );
+
+      return { ...prev, tasks: updatedTasks, current_percentage: newPercentage };
+    });
+
+    setPendingTasks(newPending);
   };
 
   const toggleSection = (section: string) => {
@@ -159,6 +222,11 @@ const ImplementationDetail: React.FC = () => {
     acc[s].push(task);
     return acc;
   }, {});
+
+  // Sort tasks within each section by ID
+  Object.keys(sections).forEach(sectionName => {
+    sections[sectionName].sort((a: any, b: any) => a.id - b.id);
+  });
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -261,21 +329,45 @@ const ImplementationDetail: React.FC = () => {
 
         {/* Right Column: Grouped Milestone Checklist */}
         <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <ListChecks size={18} style={{ color: '#10b981' }} />
               <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Project Milestones</h2>
             </div>
+            {Object.keys(pendingTasks).length > 0 && (
+              <button 
+                onClick={handleSaveTasks}
+                style={{ 
+                  background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', 
+                  padding: '0.4rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '0.375rem', animation: 'pulse 2s infinite'
+                }}
+              >
+                <Save size={14} /> Save Changes ({Object.keys(pendingTasks).length})
+              </button>
+            )}
           </div>
           <div style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
             {Object.keys(sections).map(sectionName => (
               <div key={sectionName} style={{ borderBottom: '1px solid #f3f4f6' }}>
                 <div 
-                  onClick={() => toggleSection(sectionName)}
-                  style={{ padding: '1rem', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderLeft: '4px solid #1a56db' }}
+                  style={{ padding: '0.75rem 1rem', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '4px solid #1a56db' }}
                 >
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.025em' }}>{sectionName}</span>
-                  {expandedSections.includes(sectionName) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  <div 
+                    onClick={() => toggleSection(sectionName)}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                  >
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.025em' }}>{sectionName}</span>
+                    {expandedSections.includes(sectionName) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                  
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); toggleSectionCompletion(sectionName); }}
+                    title="Toggle All in Section"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
+                  >
+                    {sections[sectionName].every((t: any) => t.is_completed) ? <CheckSquare size={18} style={{ color: '#10b981' }} /> : <Square size={18} />}
+                  </button>
                 </div>
                 
                 {expandedSections.includes(sectionName) && (

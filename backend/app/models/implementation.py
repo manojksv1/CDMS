@@ -24,8 +24,8 @@ class Implementation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    logs = relationship("ImplementationLog", backref="implementation", cascade="all, delete-orphan")
-    tasks = relationship("ImplementationTask", backref="implementation", cascade="all, delete-orphan")
+    logs = relationship("ImplementationLog", backref="implementation", cascade="all, delete-orphan", order_by="desc(ImplementationLog.date)")
+    tasks = relationship("ImplementationTask", backref="implementation", cascade="all, delete-orphan", order_by="ImplementationTask.id")
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
 
 class ImplementationLog(Base):

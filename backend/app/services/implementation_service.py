@@ -105,6 +105,25 @@ def update_task_status(db: Session, task_id: int, is_completed: bool):
     recalculate_percentage(db, db_task.implementation_id)
     return db_task
 
+def bulk_update_tasks(db: Session, updates: list[dict]):
+    if not updates: return
+    
+    implementation_id = None
+    for update in updates:
+        task_id = update.get("id")
+        is_completed = update.get("is_completed")
+        
+        db_task = db.query(ImplementationTask).filter(ImplementationTask.id == task_id).first()
+        if db_task:
+            db_task.is_completed = is_completed
+            db_task.completed_at = datetime.utcnow() if is_completed else None
+            implementation_id = db_task.implementation_id
+            
+    db.commit()
+    if implementation_id:
+        recalculate_percentage(db, implementation_id)
+    return True
+
 def recalculate_percentage(db: Session, implementation_id: int):
     tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == implementation_id).all()
     total_percentage = sum(t.weight for t in tasks if t.is_completed)

@@ -88,7 +88,7 @@ def create_log(
 def update_task(
     task_id: int,
     task_update: ImplementationTaskUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     db_task = implementation_service.update_task_status(db, task_id, task_update.is_completed)
@@ -96,6 +96,14 @@ def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     return db_task
 
+@router.patch("/tasks-bulk/update")
+def bulk_update_tasks(
+    updates: List[dict],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    success = implementation_service.bulk_update_tasks(db, updates)
+    return {"message": "Tasks updated successfully"}
 # --- Section & Template Endpoints ---
 
 @router.get("/sections/", response_model=List[MilestoneSection])
