@@ -4,19 +4,19 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #0d151c;
+  background-color: #fdfbf7;
   background-image: 
-    linear-gradient(30deg, #0d151c 12%, transparent 12.5%, transparent 87%, #0d151c 87.5%, #0d151c),
-    linear-gradient(150deg, #0d151c 12%, transparent 12.5%, transparent 87%, #0d151c 87.5%, #0d151c),
-    linear-gradient(30deg, #0d151c 12%, transparent 12.5%, transparent 87%, #0d151c 87.5%, #0d151c),
-    linear-gradient(150deg, #0d151c 12%, transparent 12.5%, transparent 87%, #0d151c 87.5%, #0d151c),
-    linear-gradient(60deg, #162431 25%, transparent 25.5%, transparent 75%, #162431 75%, #162431),
-    linear-gradient(60deg, #162431 25%, transparent 25.5%, transparent 75%, #162431 75%, #162431);
+    linear-gradient(30deg, #fdfbf7 12%, transparent 12.5%, transparent 87%, #fdfbf7 87.5%, #fdfbf7),
+    linear-gradient(150deg, #fdfbf7 12%, transparent 12.5%, transparent 87%, #fdfbf7 87.5%, #fdfbf7),
+    linear-gradient(30deg, #fdfbf7 12%, transparent 12.5%, transparent 87%, #fdfbf7 87.5%, #fdfbf7),
+    linear-gradient(150deg, #fdfbf7 12%, transparent 12.5%, transparent 87%, #fdfbf7 87.5%, #fdfbf7),
+    linear-gradient(60deg, #eef6f9 25%, transparent 25.5%, transparent 75%, #eef6f9 75%, #eef6f9),
+    linear-gradient(60deg, #eef6f9 25%, transparent 25.5%, transparent 75%, #eef6f9 75%, #eef6f9);
   background-size: 80px 140px;
   background-position: 0 0, 0 0, 40px 70px, 40px 70px, 0 0, 40px 70px;
   position: relative;
   overflow: hidden;
-  color: #fff;
+  color: #2d3748;
   font-family: 'Inter', -apple-system, sans-serif;
 }
 
@@ -26,7 +26,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.4) 100%);
+  background: radial-gradient(circle at center, transparent 0%, rgba(100, 150, 200, 0.05) 100%);
   pointer-events: none;
 }
 
@@ -54,41 +54,18 @@
   max-width: 450px;
 }
 
-.brand-logo {
-  position: relative;
-  width: 80px;
-  height: 80px;
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.shield-icon {
-  color: #00d2ff;
-  filter: drop-shadow(0 0 10px rgba(0, 210, 255, 0.5));
-}
-
-.shield-inner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-}
-
 .brand-title {
   font-size: 3.5rem;
   font-weight: 800;
   line-height: 1.1;
   margin-bottom: 1.5rem;
   letter-spacing: -0.02em;
-  color: #e0e0e0;
+  color: #1a202c;
 }
 
 .brand-subtitle {
   font-size: 1.25rem;
-  color: #a0a0a0;
+  color: #4a5568;
   max-width: 400px;
   line-height: 1.5;
 }
@@ -102,15 +79,15 @@
 }
 
 .login-card-v2 {
-  background: rgba(20, 30, 40, 0.85);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 210, 255, 0.25);
+  border: 1px solid rgba(59, 130, 246, 0.15);
   border-radius: 16px;
   padding: 3.5rem 3rem;
   width: 100%;
   max-width: 450px;
   position: relative;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.08);
 }
 
 .card-corner-top-left {
@@ -119,11 +96,10 @@
   left: -2px;
   width: 50px;
   height: 50px;
-  border-top: 3px solid #00d2ff;
-  border-left: 3px solid #00d2ff;
+  border-top: 3px solid #3b82f6;
+  border-left: 3px solid #3b82f6;
   border-top-left-radius: 16px;
   clip-path: polygon(0 0, 100% 0, 100% 15%, 15% 15%, 15% 100%, 0 100%);
-  box-shadow: -2px -2px 15px rgba(0, 210, 255, 0.6);
 }
 
 .card-corner-bottom-right {
@@ -132,22 +108,10 @@
   right: -2px;
   width: 50px;
   height: 50px;
-  border-bottom: 3px solid #00d2ff;
-  border-right: 3px solid #00d2ff;
+  border-bottom: 3px solid #3b82f6;
+  border-right: 3px solid #3b82f6;
   border-bottom-right-radius: 16px;
   clip-path: polygon(85% 0, 100% 0, 100% 100%, 0 100%, 0 85%, 85% 85%);
-  box-shadow: 2px 2px 15px rgba(0, 210, 255, 0.6);
-}
-
-.card-header {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 2.5rem;
-}
-
-.brain-icon-large {
-  color: #00d2ff;
-  filter: drop-shadow(0 0 20px rgba(0, 210, 255, 0.7));
 }
 
 /* Form Styles */
@@ -158,7 +122,7 @@
 .login-form-v2 label {
   display: block;
   font-size: 0.8rem;
-  color: #808080;
+  color: #718096;
   margin-bottom: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -174,18 +138,18 @@
 .input-icon {
   position: absolute;
   left: 14px;
-  color: #00d2ff;
+  color: #3b82f6;
   opacity: 0.7;
 }
 
 .login-form-v2 input[type="text"],
 .login-form-v2 input[type="password"] {
   width: 100%;
-  background: rgba(30, 45, 60, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 10px;
   padding: 1rem 1rem 1rem 3rem;
-  color: #fff;
+  color: #2d3748;
   font-size: 1rem;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-sizing: border-box;
@@ -193,9 +157,9 @@
 
 .login-form-v2 input:focus {
   outline: none;
-  border-color: #00d2ff;
-  background: rgba(30, 45, 60, 0.9);
-  box-shadow: 0 0 20px rgba(0, 210, 255, 0.25);
+  border-color: #3b82f6;
+  background: #fff;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .password-toggle {
@@ -203,7 +167,7 @@
   right: 14px;
   background: none;
   border: none;
-  color: #606060;
+  color: #a0aec0;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -212,33 +176,14 @@
 }
 
 .password-toggle:hover {
-  color: #00d2ff;
-}
-
-.forgot-password {
-  text-align: right;
-  margin-top: 0.6rem;
-}
-
-.forgot-password a {
-  color: #00d2ff;
-  text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  opacity: 0.8;
-  transition: opacity 0.2s;
-}
-
-.forgot-password a:hover {
-  text-decoration: underline;
-  opacity: 1;
+  color: #3b82f6;
 }
 
 .login-button-v2 {
   width: 100%;
   padding: 1.1rem;
   margin-top: 1.2rem;
-  background: linear-gradient(90deg, #1e429f 0%, #00d2ff 100%);
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
   border: none;
   border-radius: 10px;
   color: #fff;
@@ -246,15 +191,15 @@
   font-size: 1.1rem;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 10px 25px rgba(0, 210, 255, 0.35);
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.2);
   text-transform: uppercase;
   letter-spacing: 0.15em;
 }
 
 .login-button-v2:hover {
   transform: translateY(-3px);
-  box-shadow: 0 15px 35px rgba(0, 210, 255, 0.55);
-  filter: brightness(1.15);
+  box-shadow: 0 15px 35px rgba(59, 130, 246, 0.3);
+  filter: brightness(1.05);
 }
 
 .login-button-v2:active {
@@ -262,78 +207,10 @@
 }
 
 .login-button-v2:disabled {
-  background: #4a5568;
+  background: #cbd5e0;
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
-}
-
-.remember-me-v2 {
-  margin-top: 2rem;
-}
-
-/* Checkbox Styling */
-.checkbox-container {
-  display: flex;
-  align-items: center;
-  position: relative;
-  padding-left: 32px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: #b0b0b0;
-  user-select: none;
-  font-weight: 500;
-}
-
-.checkbox-container input {
-  position: absolute;
-  opacity: 0;
-  cursor: pointer;
-  height: 0;
-  width: 0;
-}
-
-.checkmark {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 20px;
-  width: 20px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 5px;
-  transition: all 0.2s;
-}
-
-.checkbox-container:hover input ~ .checkmark {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: #00d2ff;
-}
-
-.checkbox-container input:checked ~ .checkmark {
-  background-color: #00d2ff;
-  border-color: #00d2ff;
-  box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
-}
-
-.checkmark:after {
-  content: "";
-  position: absolute;
-  display: none;
-}
-
-.checkbox-container input:checked ~ .checkmark:after {
-  display: block;
-}
-
-.checkbox-container .checkmark:after {
-  left: 7px;
-  top: 3px;
-  width: 4px;
-  height: 9px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
 }
 
 /* Right Section (Widgets) */
@@ -347,15 +224,15 @@
 }
 
 .widget {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.1);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.05);
   width: 100%;
   max-width: 320px;
   transition: transform 0.3s ease;
@@ -363,7 +240,7 @@
 
 .widget:hover {
   transform: translateX(-5px);
-  border-color: rgba(0, 210, 255, 0.3);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .widget-header {
@@ -372,7 +249,7 @@
   gap: 0.75rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: #00d2ff;
+  color: #3b82f6;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.9;
@@ -382,29 +259,49 @@
   opacity: 0.8;
 }
 
-/* Bar Widget */
-.widget-bars {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  height: 60px;
-  padding: 0 5px;
-}
-
-.bar-container {
-  width: 10%;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-}
-
-.bar {
+/* Line Widget */
+.widget-graph {
   width: 100%;
-  background: linear-gradient(to top, rgba(0, 210, 255, 0.2), rgba(0, 210, 255, 0.8));
-  border-radius: 3px 3px 0 0;
-  box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
-  transition: height 0.3s ease;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+.line-graph {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-path {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  transition: stroke-dashoffset 4s ease-out;
+}
+
+.line-graph.animate .graph-path {
+  stroke-dashoffset: 0;
+}
+
+.graph-area {
+  opacity: 0;
+  transition: opacity 2s ease-out 2s;
+}
+
+.line-graph.animate .graph-area {
+  opacity: 1;
+}
+
+.graph-dot {
+  opacity: 0;
+  transform: scale(0);
+  transform-origin: center;
+  transition: all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.line-graph.animate .graph-dot:nth-child(5) { transition-delay: 2.2s; opacity: 1; transform: scale(1); }
+.line-graph.animate .graph-dot:nth-child(6) { transition-delay: 2.8s; opacity: 1; transform: scale(1); }
+.line-graph.animate .graph-dot:nth-child(7) { transition-delay: 3.4s; opacity: 1; transform: scale(1); }
 
 /* System Widget */
 .system-widget {
@@ -420,23 +317,23 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.7rem;
-  color: #a0a0a0;
+  color: #718096;
   margin-bottom: 0.4rem;
 }
 
 .progress-bg {
   width: 100%;
   height: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: #edf2f7;
   border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #1e429f, #00d2ff);
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
   border-radius: 3px;
-  box-shadow: 0 0 5px rgba(0, 210, 255, 0.5);
+  transition: width 3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Circle Widget */
@@ -454,21 +351,16 @@
 
 .donut-ring {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.05);
+  stroke: #edf2f7;
   stroke-width: 3;
 }
 
 .donut-segment {
   fill: none;
-  stroke: #00d2ff;
+  stroke: #3b82f6;
   stroke-width: 3;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 5px rgba(0, 210, 255, 0.6));
-  animation: progress 1.5s ease-out forwards;
-}
-
-@keyframes progress {
-  0% { stroke-dasharray: 0 100; }
+  transition: stroke-dasharray 0.1s linear;
 }
 
 .donut-text {
@@ -479,13 +371,13 @@
 .donut-text .percentage {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #fff;
+  color: #2d3748;
   line-height: 1;
 }
 
 .donut-text .label {
   font-size: 0.65rem;
-  color: #00d2ff;
+  color: #3b82f6;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
@@ -508,10 +400,6 @@
     margin-bottom: 2rem;
   }
   
-  .brand-logo {
-    margin: 0 auto 1.5rem;
-  }
-  
   .brand-title {
     font-size: 2.2rem;
   }
@@ -527,13 +415,13 @@
 
 /* Error message styling */
 .login-error {
-  background: rgba(220, 38, 38, 0.15);
-  color: #fca5a5;
+  background: rgba(220, 38, 38, 0.05);
+  color: #dc2626;
   padding: 0.75rem;
   border-radius: 8px;
   font-size: 0.85rem;
   margin-bottom: 1.5rem;
   text-align: center;
-  border: 1px solid rgba(220, 38, 38, 0.2);
+  border: 1px solid rgba(220, 38, 38, 0.1);
   backdrop-filter: blur(5px);
 }
