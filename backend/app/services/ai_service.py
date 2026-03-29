@@ -127,3 +127,123 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
         return response.text
     except Exception as e:
         return f"Failed to generate AI summary. Error: {str(e)}"
+
+def handle_chat_query(db: Session, current_user: User, query: str, summary_type: str, client_id: int = None, history: list = None) -> str:
+    if not settings.GEMINI_API_KEY:
+        return "AI Chat is unavailable because GEMINI_API_KEY is not configured."
+
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return "AI SDK not installed."
+
+    context_str = ""
+    
+    if summary_type == 'implementation':
+        imp_query = db.query(Implementation)
+        if client_id:
+            imp_query = imp_query.filter(Implementation.id == client_id)
+            
+        active_imps = imp_query.all()
+        
+        if not active_imps:
+            return "I could not find any active software implementation projects for the selected criteria."
+            
+        data_context = []
+        for imp in active_imps:
+            all_tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == imp.id).all()
+            completed_tasks = [t.task_name for t in all_tasks if t.is_completed]
+            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed]
+            
+            recent_logs = db.query(ImplementationLog).filter(
+                ImplementationLog.implementation_id == imp.id
+            ).order_by(ImplementationLog.created_at.desc()).limit(10).all()
+            
+            log_texts = [f"- {log.created_at.strftime('%Y-%m-%d')}: {(log.user.name if log.user else 'System')} logged '{log.remarks}'" for log in recent_logs]
+            
+            project_data = (
+                f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%, Version/Build: {imp.version_details or 'N/A'})\n"
+                f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
+                f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
+                f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
+                f"Last 10 Log Updates:\n" + "\n".join(log_texts)
+            )
+            data_context.append(project_data)
+
+        context_str = "\n\n".join(data_context)
+        
+    elif summary_type == 'installation':
+        task_query = db.query(Task)
+        
+        if client_id:
+            task_query = task_query.join(Location).filter(Location.client_id == client_id)
+            
+        tasks = task_query.all()
+        
+        if not tasks:
+            return "I could not find any hardware installation tasks for the selected criteria."
+            
+        data_context = []
+        client_info_set = set()
+        
+        for t in tasks:
+            client = t.location.client if t.location else None
+            client_name = client.name if client else "Unknown Client"
+            
+            if client and client.id not in client_info_set:
+                client_info_set.add(client.id)
+                db_type = client.database_type or 'N/A'
+                db_ver = client.database_version or 'N/A'
+                uat_ver = client.uat_version or 'N/A'
+                prod_ver = client.prod_version or 'N/A'
+                client_loc = client.client_location or 'N/A'
+                zone = client.zone or 'N/A'
+                c_remarks = client.remarks or 'None'
+                poc_info = f"POC 1: {client.poc_1 or 'N/A'}, POC 2: {client.poc_2 or 'N/A'}"
+                data_context.append(f"\n[CLIENT INFO] Name: {client_name}, Database: {db_type} {db_ver}, UAT Version: {uat_ver}, Prod Version: {prod_ver}, Region/Location: {client_loc}, Zone: {zone}, {poc_info}, Client Notes: {c_remarks}\nTasks for {client_name}:")
+                
+            assignee = t.assignee.name if t.assignee else "Unassigned"
+            build_ver = t.build_version or 'N/A'
+            data_context.append(f"- Task: {t.name} (Status: {t.status.value}, Build Version: {build_ver}, Due: {t.due_date}, Assigned: {assignee}, Task Remarks: {t.remarks or 'None'})")
+
+        context_str = "\n".join(data_context)
+    else:
+        return "Invalid tracker type."
+
+    history_context = ""
+    if history:
+        history_context = "=== PREVIOUS CONVERSATION HISTORY ===\n"
+        for msg in history[-5:]: # Keep last 5 turns to maintain context without overloading
+            role = "User" if msg.role == "user" else "AI"
+            history_context += f"{role}: {msg.content}\n"
+        history_context += "=====================================\n\n"
+
+    prompt = f"""
+    You are an expert Data Analyst and Project Manager Assistant. 
+    A user has asked you a question regarding their project data.
+
+    Here is the relevant system data you must base your answer on:
+    === SYSTEM DATA ===
+    {context_str}
+    ===================
+
+    {history_context}
+    User's Question: {query}
+
+    Please answer the user's question clearly and concisely based ONLY on the provided system data. Do not make up information.
+    If the answer cannot be determined from the data, politely say so.
+    Output your response in Markdown format.
+    """
+
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-3.1-flash-lite-preview',
+            contents=prompt,
+        )
+        return response.text
+    except Exception as e:
+        return f"Failed to get an answer from AI. Error: {str(e)}"
+

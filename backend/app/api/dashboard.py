@@ -30,3 +30,11 @@ def get_ai_weekly_summary(summary_type: str = 'implementation', db: Session = De
     from app.services.ai_service import generate_weekly_executive_summary
     summary = generate_weekly_executive_summary(db, current_user, summary_type)
     return {"summary": summary}
+
+from app.schemas.dashboard import ChatRequest, ChatResponse
+@router.post("/ai-chat", response_model=ChatResponse)
+def post_ai_chat(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_manager_or_admin)):
+    from app.services.ai_service import handle_chat_query
+    reply = handle_chat_query(db, current_user, request.query, request.summary_type, request.client_id, getattr(request, 'history', None))
+    return {"reply": reply}
+

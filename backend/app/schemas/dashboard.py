@@ -38,3 +38,16 @@ class DelayedTaskDetail(BaseModel):
     location: LocationResponse
     client: ClientResponse
     days_delayed: int
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    query: str
+    summary_type: str = 'implementation'
+    client_id: Optional[int] = None
+    history: Optional[List[ChatMessage]] = None
+
+class ChatResponse(BaseModel):
+    reply: str

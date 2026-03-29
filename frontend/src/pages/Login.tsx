@@ -48,7 +48,7 @@ const Login: React.FC = () => {
             <LogIn size={28} />
           </div>
           <h1>Welcome Back</h1>
-          <p>Sign in to the Installation Tracking System</p>
+          <p>Sign in to the CDMS Tracker</p>
         </div>
         
         {error && <div className="login-error">{error}</div>}

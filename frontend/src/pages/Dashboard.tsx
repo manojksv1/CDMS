@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import api from '../api';
-import { Info, Sparkles, RefreshCw } from 'lucide-react';
+import { Info, Sparkles, RefreshCw, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -12,17 +12,38 @@ const Dashboard: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [summaryType, setSummaryType] = useState<string>('implementation');
 
+  // Chat State
+  const [clients, setClients] = useState<any[]>([]);
+  const [implementations, setImplementations] = useState<any[]>([]);
+  const [selectedChatClient, setSelectedChatClient] = useState<string>('all');
+  const [chatInput, setChatInput] = useState('');
+  const [chatHistory, setChatHistory] = useState<{role: 'user' | 'ai', content: string}[]>([]);
+  const [isChatting, setIsChatting] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatHistory]);
+
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const [sumRes, delRes] = await Promise.all([
+        const [sumRes, delRes, clientsRes, impRes] = await Promise.all([
           api.get('/dashboard/summary'),
-          api.get('/dashboard/delays')
+          api.get('/dashboard/delays'),
+          api.get('/clients/?limit=1000'), // Fetch all clients for the dropdown
+          api.get('/implementations/') // Fetch all implementations for the dropdown
         ]);
         setSummary(sumRes.data);
         setDelays(delRes.data);
+        setClients(clientsRes.data);
+        setImplementations(impRes.data);
       } catch (err) {
-        console.error("Failed to fetch dashboard", err);
+        console.error("Failed to fetch dashboard data", err);
       }
     };
     fetchDashboard();
@@ -39,6 +60,39 @@ const Dashboard: React.FC = () => {
       setAiSummary("Failed to generate summary. Please check backend logs and ensure your GEMINI_API_KEY is set in the .env file.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  useEffect(() => {
+    setChatHistory([]);
+  }, [summaryType, selectedChatClient]);
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMsg = chatInput;
+    setChatInput('');
+    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsChatting(true);
+
+    try {
+      const payload: any = {
+        query: userMsg,
+        summary_type: summaryType,
+        history: chatHistory
+      };
+      if (selectedChatClient !== 'all') {
+        payload.client_id = parseInt(selectedChatClient);
+      }
+
+      const res = await api.post('/dashboard/ai-chat', payload);
+      setChatHistory(prev => [...prev, { role: 'ai', content: res.data.reply }]);
+    } catch (err) {
+      console.error(err);
+      setChatHistory(prev => [...prev, { role: 'ai', content: "Sorry, I encountered an error while fetching the answer." }]);
+    } finally {
+      setIsChatting(false);
     }
   };
 
@@ -172,7 +226,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         {aiSummary && (
-          <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', lineHeight: 1.6, overflowX: 'auto' }}>
+          <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', lineHeight: 1.6, overflowX: 'auto', marginBottom: '1.5rem' }}>
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -181,7 +235,7 @@ const Dashboard: React.FC = () => {
                 ul: ({node, ...props}) => <ul style={{ margin: '0.5rem 0 1rem 1.5rem', padding: 0 }} {...props} />,
                 li: ({node, ...props}) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
                 p: ({node, ...props}) => <p style={{ margin: '0 0 0.75rem 0' }} {...props} />,
-                strong: ({node, ...props}) => <strong style={{ color: '#white', fontWeight: 700 }} {...props} />,
+                strong: ({node, ...props}) => <strong style={{ color: 'white', fontWeight: 700 }} {...props} />,
                 table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem', marginBottom: '1rem' }} {...props} />,
                 thead: ({node, ...props}) => <thead style={{ background: 'rgba(255,255,255,0.1)' }} {...props} />,
                 th: ({node, ...props}) => <th style={{ padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'left', fontWeight: 600 }} {...props} />,
@@ -190,6 +244,94 @@ const Dashboard: React.FC = () => {
             >
               {aiSummary}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {/* AI Chatbot Section */}
+        {aiSummary && (
+          <div style={{ background: 'white', borderRadius: '8px', padding: '1.5rem', color: '#111827', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                <Sparkles size={18} style={{ color: '#3b82f6' }} /> Ask Questions About Your Data
+              </h3>
+              <select 
+                value={selectedChatClient} 
+                onChange={(e) => setSelectedChatClient(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                  background: '#f9fafb'
+                }}
+              >
+                <option value="all">All Companies</option>
+                {summaryType === 'installation' 
+                  ? clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                  : implementations.map(i => <option key={i.id} value={i.id}>{i.company_name}</option>)
+                }
+              </select>
+            </div>
+
+            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {chatHistory.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem 0' }}>
+                  Ask me anything about the {summaryType} status for {selectedChatClient === 'all' ? 'all companies' : 'the selected company'}!
+                </div>
+              ) : (
+                chatHistory.map((msg, idx) => (
+                  <div key={idx} style={{ 
+                    alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    background: msg.role === 'user' ? '#eff6ff' : '#f3f4f6',
+                    color: msg.role === 'user' ? '#1e40af' : '#374151',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '12px',
+                    borderBottomRightRadius: msg.role === 'user' ? '2px' : '12px',
+                    borderBottomLeftRadius: msg.role === 'user' ? '12px' : '2px',
+                    maxWidth: '85%'
+                  }}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({node, ...props}) => <p style={{ margin: 0 }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
+                        table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }} {...props} />,
+                        th: ({node, ...props}) => <th style={{ padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', textAlign: 'left', fontSize: '0.8rem' }} {...props} />,
+                        td: ({node, ...props}) => <td style={{ padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', fontSize: '0.8rem' }} {...props} />
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form onSubmit={handleChatSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
+              <input 
+                type="text" 
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                placeholder={`Ask about ${summaryType} data...`}
+                disabled={isChatting}
+                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }}
+              />
+              <button 
+                type="submit"
+                disabled={isChatting || !chatInput.trim()}
+                style={{ 
+                  background: '#3b82f6', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '8px', 
+                  cursor: (isChatting || !chatInput.trim()) ? 'not-allowed' : 'pointer',
+                  opacity: (isChatting || !chatInput.trim()) ? 0.7 : 1,
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600
+                }}
+              >
+                {isChatting ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </form>
           </div>
         )}
       </div>
