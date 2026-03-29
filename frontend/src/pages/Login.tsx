@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { User, Lock, Eye, EyeOff, TrendingUp, Activity, Zap, CheckCircle2, Users } from 'lucide-react';
+import { motion } from 'framer-motion';
 import './Login.css';
 
 const Login: React.FC = () => {
@@ -66,7 +67,12 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="login-page">
+    <motion.div 
+      className="login-page"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
       <div className="login-background-overlay"></div>
       
       <div className="login-content">
@@ -231,7 +237,7 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

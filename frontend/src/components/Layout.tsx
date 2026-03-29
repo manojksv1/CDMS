@@ -1,14 +1,16 @@
 import React from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { LayoutDashboard, Users, LogOut, Shield, ClipboardList, Wrench } from 'lucide-react';
 import Notification from './Notification';
+import { motion } from 'framer-motion';
 import './Layout.css';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = async () => {
     try {
@@ -84,9 +86,15 @@ const Layout: React.FC = () => {
           </div>
         </header>
         
-        <div className="content-wrapper">
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="content-wrapper"
+        >
           <Outlet />
-        </div>
+        </motion.div>
       </main>
     </div>
   );
