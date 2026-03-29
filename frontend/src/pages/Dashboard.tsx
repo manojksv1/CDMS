@@ -98,17 +98,24 @@ const Dashboard: React.FC = () => {
 
   if (!summary) return <div style={{ padding: '2rem' }}>Loading dashboard...</div>;
 
-  const MetricCard = ({ title, value, color, info }: { title: string, value: any, color?: string, info: string }) => (
-    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
-        <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>{title}</h3>
-        <div title={info} style={{ cursor: 'help', color: '#9ca3af', display: 'flex' }}>
-          <Info size={14} />
+  const MetricCard = ({ title, value, color, info, details }: { title: string, value: any, color?: string, info: string, details?: string[] }) => {
+    const tooltipText = details && details.length > 0 ? `${info}\n\nProjects:\n- ${details.join('\n- ')}` : info;
+    
+    return (
+      <div 
+        title={tooltipText}
+        style={{ background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', position: 'relative' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>{title}</h3>
+          <div style={{ cursor: 'help', color: '#9ca3af', display: 'flex' }}>
+            <Info size={14} />
+          </div>
         </div>
+        <p style={{ margin: 0, fontSize: '1.875rem', fontWeight: 700, color: color || '#111827' }}>{value}</p>
       </div>
-      <p style={{ margin: 0, fontSize: '1.875rem', fontWeight: 700, color: color || '#111827' }}>{value}</p>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="dashboard" style={{ paddingBottom: '3rem' }}>
@@ -142,6 +149,7 @@ const Dashboard: React.FC = () => {
           value={summary.delayed_tasks}
           color="#ef4444"
           info="Tasks that are past their due date and not yet completed."
+          details={summary.delayed_task_details}
         />
       </div>
 
@@ -160,18 +168,21 @@ const Dashboard: React.FC = () => {
           value={summary.live_implementations}
           color="#10b981"
           info="Projects that have been successfully deployed and are now 'Live'."
+          details={summary.live_implementation_details}
         />
         <MetricCard 
           title="Stagnant Projects" 
           value={summary.stagnant_implementations}
           color={summary.stagnant_implementations > 0 ? '#f59e0b' : '#10b981'}
           info="Projects 'In Progress' or 'On Hold' that haven't had a daily log entry in the last 3 days."
+          details={summary.stagnant_implementation_details}
         />
         <MetricCard 
           title="Active (In Progress)" 
           value={summary.implementations_by_status?.InProgress || 0}
           color="#3b82f6"
           info="Total number of projects currently in the implementation phase."
+          details={summary.in_progress_implementation_details}
         />
       </div>
 

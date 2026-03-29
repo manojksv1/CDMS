@@ -33,6 +33,12 @@ class DashboardSummary(BaseModel):
     stagnant_implementations: int
     implementations_by_status: dict
 
+    # Details for Tooltips
+    live_implementation_details: List[str] = []
+    stagnant_implementation_details: List[str] = []
+    delayed_task_details: List[str] = []
+    in_progress_implementation_details: List[str] = []
+
 class DelayedTaskDetail(BaseModel):
     task: TaskResponse
     location: LocationResponse
