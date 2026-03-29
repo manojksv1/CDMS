@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
-import { Info } from 'lucide-react';
+import { Info, Sparkles, RefreshCw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const Dashboard: React.FC = () => {
   const [summary, setSummary] = useState<any>(null);
   const [delays, setDelays] = useState<any[]>([]);
+  
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [summaryType, setSummaryType] = useState<string>('implementation');
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -21,6 +27,20 @@ const Dashboard: React.FC = () => {
     };
     fetchDashboard();
   }, []);
+
+  const handleGenerateSummary = async () => {
+    setIsGenerating(true);
+    setAiSummary(null);
+    try {
+      const res = await api.get(`/dashboard/ai-summary?summary_type=${summaryType}`);
+      setAiSummary(res.data.summary);
+    } catch (err) {
+      console.error(err);
+      setAiSummary("Failed to generate summary. Please check backend logs and ensure your GEMINI_API_KEY is set in the .env file.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   if (!summary) return <div style={{ padding: '2rem' }}>Loading dashboard...</div>;
 
@@ -99,6 +119,79 @@ const Dashboard: React.FC = () => {
           color="#3b82f6"
           info="Total number of projects currently in the implementation phase."
         />
+      </div>
+
+      {/* AI Executive Summary Section */}
+      <div style={{ background: 'linear-gradient(to right, #1e3a8a, #312e81)', padding: '2rem', borderRadius: '12px', marginBottom: '2.5rem', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: aiSummary ? '2rem' : '0' }}>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Sparkles size={20} style={{ color: '#60a5fa' }} />
+              Weekly Executive Summary
+            </h2>
+            <p style={{ margin: '0 0 1rem 0', color: '#93c5fd', fontSize: '0.875rem' }}>
+              Generate an AI-powered summary of activity from the past 7 days.
+            </p>
+            <select 
+              value={summaryType} 
+              onChange={(e) => setSummaryType(e.target.value)}
+              disabled={isGenerating}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.2)',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="implementation" style={{ color: '#111827' }}>Implementation Tracker</option>
+              <option value="installation" style={{ color: '#111827' }}>Installation Tracker</option>
+            </select>
+          </div>
+          <button 
+            onClick={handleGenerateSummary}
+            disabled={isGenerating}
+            style={{ 
+              background: isGenerating ? 'rgba(255,255,255,0.1)' : 'white', 
+              color: isGenerating ? 'white' : '#1e3a8a', 
+              border: 'none', 
+              padding: '0.75rem 1.5rem', 
+              borderRadius: '8px', 
+              fontWeight: 600, 
+              cursor: isGenerating ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            {isGenerating ? <><RefreshCw size={18} className="animate-spin" /> Analyzing Logs...</> : 'Generate Summary'}
+          </button>
+        </div>
+
+        {aiSummary && (
+          <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', lineHeight: 1.6, overflowX: 'auto' }}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h2: ({node, ...props}) => <h2 style={{ marginTop: '1.5rem', color: '#bfdbfe', fontSize: '1.25rem', fontWeight: 600 }} {...props} />,
+                h3: ({node, ...props}) => <h3 style={{ marginTop: '1.5rem', color: '#93c5fd', fontSize: '1.1rem', fontWeight: 600 }} {...props} />,
+                ul: ({node, ...props}) => <ul style={{ margin: '0.5rem 0 1rem 1.5rem', padding: 0 }} {...props} />,
+                li: ({node, ...props}) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
+                p: ({node, ...props}) => <p style={{ margin: '0 0 0.75rem 0' }} {...props} />,
+                strong: ({node, ...props}) => <strong style={{ color: '#white', fontWeight: 700 }} {...props} />,
+                table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem', marginBottom: '1rem' }} {...props} />,
+                thead: ({node, ...props}) => <thead style={{ background: 'rgba(255,255,255,0.1)' }} {...props} />,
+                th: ({node, ...props}) => <th style={{ padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'left', fontWeight: 600 }} {...props} />,
+                td: ({node, ...props}) => <td style={{ padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.2)' }} {...props} />
+              }}
+            >
+              {aiSummary}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
 
       <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', marginBottom: '1rem' }}>Delayed Tasks Breakdown</h2>

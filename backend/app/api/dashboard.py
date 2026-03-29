@@ -24,3 +24,9 @@ def get_all_progress(db: Session = Depends(get_db), current_user: User = Depends
 @router.get("/progress/clients/{client_id}", response_model=ClientProgress)
 def get_client_progress(client_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_manager_or_admin)):
     return dashboard_service.get_client_progress(db, client_id, current_user)
+
+@router.get("/ai-summary")
+def get_ai_weekly_summary(summary_type: str = 'implementation', db: Session = Depends(get_db), current_user: User = Depends(get_current_manager_or_admin)):
+    from app.services.ai_service import generate_weekly_executive_summary
+    summary = generate_weekly_executive_summary(db, current_user, summary_type)
+    return {"summary": summary}

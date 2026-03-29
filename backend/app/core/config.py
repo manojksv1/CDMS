@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Installation Tracking System API"
@@ -14,6 +15,8 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False  # Set to True in production with HTTPS
     COOKIE_HTTPONLY: bool = True
     COOKIE_SAMESITE: str = "lax"
+
+    GEMINI_API_KEY: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

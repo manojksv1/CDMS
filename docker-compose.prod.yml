@@ -19,6 +19,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-cdms_user}:${POSTGRES_PASSWORD:-cdms_password}@db:5432/${POSTGRES_DB:-cdms_db}
       - SECRET_KEY=${SECRET_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - db
 

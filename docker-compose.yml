@@ -22,6 +22,7 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://cdms_user:cdms_password@db:5432/cdms_db
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - db
     volumes:
