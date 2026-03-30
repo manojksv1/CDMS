@@ -165,6 +165,8 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
             project_data = (
                 f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%, Version/Build: {imp.version_details or 'N/A'})\n"
                 f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
+                f"POC: {imp.poc_name or 'N/A'}, PO Date: {imp.po_date or 'N/A'}\n"
+                f"Timeline: {imp.start_date or 'N/A'} to {imp.expected_end_date or 'N/A'}\n"
                 f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
                 f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
                 f"Last 10 Log Updates:\n" + "\n".join(log_texts)
