@@ -73,7 +73,7 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
         """
         
     elif summary_type == 'installation':
-        # Hardware / Installation Tracker
+        # Software / Installation Tracker
         tasks = db.query(Task).all()
         
         recent_completed = [t for t in tasks if t.status == TaskStatus.COMPLETED] # Ideally filter by completed_at, but we only have due_date
