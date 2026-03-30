@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import case
 from app.models.implementation import Implementation, ImplementationLog, ImplementationTask, GlobalMilestone, MilestoneSection
 from app.models.client import Client
 from app.schemas.implementation import (
@@ -17,7 +18,17 @@ from app.models.user import User, UserRole
 # --- Implementation Services ---
 
 def get_implementations(db: Session, current_user: User, skip: int = 0, limit: int = 100):
-    query = db.query(Implementation).order_by(Implementation.current_percentage.desc(), Implementation.created_at.desc())
+    # Custom Sort Priority: Live (1), Completed (2), Blocked (3), OnHold (4), InProgress (5)
+    status_priority = case(
+        (Implementation.status == 'Live', 1),
+        (Implementation.status == 'Completed', 2),
+        (Implementation.status == 'Blocked', 3),
+        (Implementation.status == 'OnHold', 4),
+        (Implementation.status == 'InProgress', 5),
+        else_=6
+    )
+
+    query = db.query(Implementation).order_by(status_priority, Implementation.current_percentage.desc(), Implementation.created_at.desc())
     if current_user.role == UserRole.ENGINEER:
         query = query.filter(Implementation.assigned_user_id == current_user.id)
     imps = query.offset(skip).limit(limit).all()
@@ -136,11 +147,13 @@ def recalculate_percentage(db: Session, implementation_id: int):
         new_percentage = round(total_percentage, 2)
         db_imp.current_percentage = new_percentage
 
-        # Automatically update status if 100%
+        # Only automatically set to "Completed" if it's NOT already "Live"
         if new_percentage >= 100.0:
-            db_imp.status = "Completed"
-        elif new_percentage > 0 and db_imp.status == "Completed":
-            # If it was completed but then a task was un-completed
+            if db_imp.status != "Live":
+                db_imp.status = "Completed"
+        elif new_percentage < 100.0 and db_imp.status == "Completed":
+            # If it was completed but then a task was un-completed, revert to InProgress
+            # We don't revert if status is "Live" because that's a manually set production state
             db_imp.status = "InProgress"
 
         db.commit()

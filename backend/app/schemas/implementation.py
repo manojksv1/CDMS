@@ -54,6 +54,7 @@ class ImplementationBase(BaseModel):
     start_date: Optional[date] = None
     expected_end_date: Optional[date] = None
     status: str = "InProgress"
+    status_remarks: Optional[str] = None
 
 class ImplementationCreate(ImplementationBase):
     pass
@@ -68,12 +69,14 @@ class ImplementationUpdate(BaseModel):
     start_date: Optional[date] = None
     expected_end_date: Optional[date] = None
     status: Optional[str] = None
+    status_remarks: Optional[str] = None
 
 class Implementation(ImplementationBase):
     id: int
     current_percentage: float
     assigned_user_name: Optional[str] = None 
     created_at: datetime
+    status_remarks: Optional[str] = None
     
     class Config:
         from_attributes = True

@@ -50,6 +50,7 @@ const ImplementationDetail: React.FC = () => {
     start_date: '',
     expected_end_date: '',
     status: '',
+    status_remarks: '',
     assigned_user_id: ''
   });
 
@@ -78,6 +79,7 @@ const ImplementationDetail: React.FC = () => {
         start_date: projectRes.data.start_date || '',
         expected_end_date: projectRes.data.expected_end_date || '',
         status: projectRes.data.status || 'InProgress',
+        status_remarks: projectRes.data.status_remarks || '',
         assigned_user_id: projectRes.data.assigned_user_id ? String(projectRes.data.assigned_user_id) : ''
       });
 
@@ -281,7 +283,12 @@ const ImplementationDetail: React.FC = () => {
             <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><User size={16} /> POC: {project.poc_name || 'None'}</span>
             <span style={{ fontSize: '0.875rem', color: '#1a56db', display: 'flex', alignItems: 'center', gap: '0.375rem', fontWeight: 500 }}><User size={16} /> Engineer: {project.assigned_user_name || 'Unassigned'}</span>
             <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><TrendingUp size={16} /> Version: {project.version_details || 'N/A'}</span>
-            <span style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Target size={16} /> Status: <strong style={{ color: '#111827' }}>{project.status}</strong></span>
+            <span 
+              style={{ fontSize: '0.875rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: '0.375rem', cursor: project.status_remarks ? 'help' : 'default' }}
+              title={project.status_remarks || ''}
+            >
+              <Target size={16} /> Status: <strong style={{ color: '#111827' }}>{project.status}</strong>
+            </span>
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.75rem' }}>
@@ -501,6 +508,7 @@ const ImplementationDetail: React.FC = () => {
                   <select value={editFormData.status} onChange={e => setEditFormData({ ...editFormData, status: e.target.value })} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
                     <option value="InProgress">In Progress</option>
                     <option value="OnHold">On Hold</option>
+                    <option value="Blocked">Blocked</option>
                     <option value="Live">Live</option>
                     <option value="Completed">Completed</option>
                   </select>
@@ -522,6 +530,21 @@ const ImplementationDetail: React.FC = () => {
                   <input type="date" value={editFormData.expected_end_date} onChange={e => setEditFormData({...editFormData, expected_end_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
+
+              {(editFormData.status === 'Blocked' || editFormData.status === 'OnHold') && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status Remarks (Why is it {editFormData.status}?)</label>
+                  <textarea 
+                    required
+                    rows={3} 
+                    value={editFormData.status_remarks} 
+                    onChange={e => setEditFormData({...editFormData, status_remarks: e.target.value})} 
+                    style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} 
+                    placeholder={`Provide reason for ${editFormData.status} status...`}
+                  />
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                 <button type="button" onClick={() => setIsEditModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Update Project</button>

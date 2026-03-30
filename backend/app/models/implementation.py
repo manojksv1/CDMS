@@ -19,7 +19,8 @@ class Implementation(Base):
     expected_end_date = Column(Date, nullable=True)
     
     # Current Status
-    status = Column(String, default="InProgress") # InProgress, OnHold, Live, Completed
+    status = Column(String, default="InProgress") # InProgress, OnHold, Live, Completed, Blocked
+    status_remarks = Column(String, nullable=True)
     current_percentage = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     

@@ -41,7 +41,8 @@ const Implementations: React.FC = () => {
     version_details: '',
     start_date: '',
     expected_end_date: '',
-    status: 'InProgress'
+    status: 'InProgress',
+    status_remarks: ''
   });
 
   const [clientFormData, setClientFormData] = useState({
@@ -103,7 +104,8 @@ const Implementations: React.FC = () => {
         version_details: '',
         start_date: '',
         expected_end_date: '',
-        status: 'InProgress'
+        status: 'InProgress',
+        status_remarks: ''
       });
       fetchData();
     } catch (err) {
@@ -158,9 +160,10 @@ const Implementations: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Live': return { bg: '#def7ec', text: '#03543f', icon: <CheckCircle2 size={14} /> };
-      case 'OnHold': return { bg: '#fde8e8', text: '#9b1c1c', icon: <AlertCircle size={14} /> };
+      case 'Blocked': return { bg: '#fde8e8', text: '#9b1c1c', icon: <X size={14} /> };
+      case 'OnHold': return { bg: '#fef3c7', text: '#92400e', icon: <AlertCircle size={14} /> };
       case 'Completed': return { bg: '#e1effe', text: '#1e429f', icon: <CheckCircle2 size={14} /> };
-      default: return { bg: '#fdf6b2', text: '#723b13', icon: <Clock size={14} /> };
+      default: return { bg: '#f3f4f6', text: '#374151', icon: <Clock size={14} /> };
     }
   };
 
@@ -202,7 +205,7 @@ const Implementations: React.FC = () => {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', padding: '0.25rem', borderRadius: '8px', border: '1px solid #d1d5db' }}>
-          {['All', 'InProgress', 'Live', 'OnHold', 'Completed'].map((status) => (
+          {['All', 'InProgress', 'Live', 'Completed', 'OnHold', 'Blocked'].map((status) => (
             <button 
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -217,7 +220,7 @@ const Implementations: React.FC = () => {
                 color: statusFilter === status ? '#111827' : '#6b7280' 
               }}
             >
-              {status === 'InProgress' ? 'In Progress' : status}
+              {status === 'InProgress' ? 'In Progress' : status === 'OnHold' ? 'On Hold' : status}
             </button>
           ))}
         </div>
@@ -257,8 +260,14 @@ const Implementations: React.FC = () => {
                     </div>
                   </td>
                   <td style={{ padding: '1rem' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: statusStyle.bg, color: statusStyle.text }}>
-                      {statusStyle.icon} {imp.status}
+                    <span 
+                      style={{ 
+                        display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: statusStyle.bg, color: statusStyle.text,
+                        cursor: imp.status_remarks ? 'help' : 'default'
+                      }}
+                      title={imp.status_remarks || ''}
+                    >
+                      {statusStyle.icon} {imp.status === 'InProgress' ? 'In Progress' : imp.status === 'OnHold' ? 'On Hold' : imp.status}
                     </span>
                   </td>
                   <td style={{ padding: '1rem' }}>
@@ -345,6 +354,33 @@ const Implementations: React.FC = () => {
                   <input type="date" value={formData.po_date} onChange={e => setFormData({...formData, po_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status</label>
+                  <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
+                    <option value="InProgress">In Progress</option>
+                    <option value="OnHold">On Hold</option>
+                    <option value="Blocked">Blocked</option>
+                    <option value="Live">Live</option>
+                    <option value="Completed">Completed</option>
+                  </select>
+                </div>
+              </div>
+
+              {(formData.status === 'Blocked' || formData.status === 'OnHold') && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status Remarks (Why is it {formData.status === 'OnHold' ? 'On Hold' : formData.status}?)</label>
+                  <textarea 
+                    required
+                    rows={2} 
+                    value={formData.status_remarks} 
+                    onChange={e => setFormData({...formData, status_remarks: e.target.value})} 
+                    style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} 
+                    placeholder={`Reason for ${formData.status === 'OnHold' ? 'On Hold' : formData.status} status...`}
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
