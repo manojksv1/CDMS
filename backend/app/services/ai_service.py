@@ -84,7 +84,7 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
             return "No Installation tasks found to summarize."
             
         data_context = []
-        data_context.append(f"Total Delayed Tasks (Hardware/Installation): {len(delayed_tasks)}")
+        data_context.append(f"Total Delayed Tasks (Software/Installation): {len(delayed_tasks)}")
         data_context.append(f"Tasks In Progress: {len(in_progress)}")
         
         if delayed_tasks:
@@ -96,8 +96,8 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
 
         context_str = "\n".join(data_context)
         prompt = f"""
-        You are an expert Executive Project Management Assistant for a Hardware Installation department.
-        Your task is to generate a clean, concise, and professional "Weekly Executive Summary" based on the following hardware installation data.
+        You are an expert Executive Project Management Assistant for a Software Installation department.
+        Your task is to generate a clean, concise, and professional "Weekly Executive Summary" based on the following software installation data.
 
         Focus on:
         1. Overall Health (Count of delayed vs in progress tasks).
@@ -184,7 +184,7 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
         tasks = task_query.all()
         
         if not tasks:
-            return "I could not find any hardware installation tasks for the selected criteria."
+            return "I could not find any software installation tasks for the selected criteria."
             
         data_context = []
         client_info_set = set()
