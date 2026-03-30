@@ -137,7 +137,37 @@ const Clients: React.FC = () => {
     setIsCommentsModalOpen(true);
   };
 
-  const filteredClients = clients.filter(c => {
+  const getClientTasks = (clientId: number) => {
+    const clientLocs = locations.filter(l => l.client_id === clientId).map(l => l.id);
+    return tasks.filter(t => clientLocs.includes(t.location_id));
+  };
+
+  const sortedClients = [...clients].sort((a, b) => {
+    const aTasks = getClientTasks(a.id);
+    const bTasks = getClientTasks(b.id);
+    
+    const aTotal = aTasks.length;
+    const bTotal = bTasks.length;
+    
+    const aCompleted = aTasks.filter(t => t.status === 'COMPLETED').length;
+    const bCompleted = bTasks.filter(t => t.status === 'COMPLETED').length;
+    
+    // Sort logic: 
+    // 1. Projects with 100% completion (and at least one task) at the top.
+    // 2. Then projects by completion percentage descending.
+    // 3. Fallback to name.
+    
+    const aPct = aTotal > 0 ? aCompleted / aTotal : 0;
+    const bPct = bTotal > 0 ? bCompleted / bTotal : 0;
+    
+    if (aPct !== bPct) {
+      return bPct - aPct;
+    }
+    
+    return a.name.localeCompare(b.name);
+  });
+
+  const filteredClients = sortedClients.filter(c => {
     const q = searchQuery.toLowerCase();
     return (
       c.name.toLowerCase().includes(q) ||
@@ -289,11 +319,6 @@ const Clients: React.FC = () => {
     return users.find(u => u.id === id)?.name || id;
   };
 
-  const getClientTasks = (clientId: number) => {
-    const clientLocs = locations.filter(l => l.client_id === clientId).map(l => l.id);
-    return tasks.filter(t => clientLocs.includes(t.location_id));
-  };
-
   const openExportModal = (clientId: number | null = null) => {
     console.log("Opening Export Modal for client:", clientId);
     setExportClientId(clientId);
@@ -442,6 +467,7 @@ const Clients: React.FC = () => {
           <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
             <tr>
               <th style={{ width: '40px' }}></th>
+              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500, width: '50px' }}>S.No</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Client Name</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Database</th>
               <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tags</th>
@@ -451,7 +477,7 @@ const Clients: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredClients.map((c) => {
+            {filteredClients.map((c, index) => {
               const clientTasks = getClientTasks(c.id);
               const isExpanded = expandedClient === c.id;
               const completedTasks = clientTasks.filter(t => t.status === 'COMPLETED').length;
@@ -467,6 +493,9 @@ const Clients: React.FC = () => {
                       >
                         {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                       </button>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>
+                      {index + 1}
                     </td>
                     <td 
                       onClick={() => setExpandedClient(isExpanded ? null : c.id)}

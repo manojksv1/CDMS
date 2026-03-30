@@ -17,7 +17,7 @@ from app.models.user import User, UserRole
 # --- Implementation Services ---
 
 def get_implementations(db: Session, current_user: User, skip: int = 0, limit: int = 100):
-    query = db.query(Implementation)
+    query = db.query(Implementation).order_by(Implementation.current_percentage.desc(), Implementation.created_at.desc())
     if current_user.role == UserRole.ENGINEER:
         query = query.filter(Implementation.assigned_user_id == current_user.id)
     imps = query.offset(skip).limit(limit).all()
@@ -40,10 +40,10 @@ def create_implementation(db: Session, implementation: ImplementationCreate):
     db.add(db_imp)
     db.commit()
     db.refresh(db_imp)
-    
+
     # NEW: Fetch sections and their milestones
     sections = db.query(MilestoneSection).order_by(MilestoneSection.order).all()
-    
+
     if not sections:
         seed_default_milestones(db)
         sections = db.query(MilestoneSection).order_by(MilestoneSection.order).all()
@@ -51,24 +51,25 @@ def create_implementation(db: Session, implementation: ImplementationCreate):
     for section in sections:
         for m in section.milestones:
             db_task = ImplementationTask(
-                implementation_id=db_imp.id, 
-                task_name=m.task_name, 
+                implementation_id=db_imp.id,
+                task_name=m.task_name,
                 section_name=section.name,
                 weight=m.weight
             )
             db.add(db_task)
-    
+
     db.commit()
     db.refresh(db_imp)
+    recalculate_percentage(db, db_imp.id) # Initial calc
     return db_imp
 
 def sync_implementation_milestones(db: Session, implementation_id: int):
     # Fetch all global milestones via sections
     master_milestones = db.query(GlobalMilestone).all()
-    
+
     current = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == implementation_id).all()
     current_names = {t.task_name for t in current}
-    
+
     added = 0
     for m in master_milestones:
         if m.task_name not in current_names:
@@ -80,7 +81,7 @@ def sync_implementation_milestones(db: Session, implementation_id: int):
             )
             db.add(db_task)
             added += 1
-            
+
     db.commit()
     recalculate_percentage(db, implementation_id)
     return added
@@ -90,8 +91,11 @@ def update_implementation(db: Session, implementation_id: int, implementation_up
     if not db_imp: return None
     for key, value in implementation_update.model_dump(exclude_unset=True).items():
         setattr(db_imp, key, value)
+
+    # If tasks are recalculated, we might need to update status too.
     db.commit()
     db.refresh(db_imp)
+    recalculate_percentage(db, implementation_id)
     return db_imp
 
 # --- Task Services ---
@@ -107,18 +111,18 @@ def update_task_status(db: Session, task_id: int, is_completed: bool):
 
 def bulk_update_tasks(db: Session, updates: list[dict]):
     if not updates: return
-    
+
     implementation_id = None
     for update in updates:
         task_id = update.get("id")
         is_completed = update.get("is_completed")
-        
+
         db_task = db.query(ImplementationTask).filter(ImplementationTask.id == task_id).first()
         if db_task:
             db_task.is_completed = is_completed
             db_task.completed_at = datetime.utcnow() if is_completed else None
             implementation_id = db_task.implementation_id
-            
+
     db.commit()
     if implementation_id:
         recalculate_percentage(db, implementation_id)
@@ -129,9 +133,17 @@ def recalculate_percentage(db: Session, implementation_id: int):
     total_percentage = sum(t.weight for t in tasks if t.is_completed)
     db_imp = db.query(Implementation).filter(Implementation.id == implementation_id).first()
     if db_imp:
-        db_imp.current_percentage = round(total_percentage, 2)
-        db.commit()
+        new_percentage = round(total_percentage, 2)
+        db_imp.current_percentage = new_percentage
 
+        # Automatically update status if 100%
+        if new_percentage >= 100.0:
+            db_imp.status = "Completed"
+        elif new_percentage > 0 and db_imp.status == "Completed":
+            # If it was completed but then a task was un-completed
+            db_imp.status = "InProgress"
+
+        db.commit()
 # --- Log Services ---
 
 def create_implementation_log(db: Session, implementation_id: int, user_id: int, log: ImplementationLogCreate):
