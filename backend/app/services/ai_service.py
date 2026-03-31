@@ -40,8 +40,9 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
             
             # Fetch Milestones (Tasks) to give AI current state context
             all_tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == imp.id).all()
-            completed_tasks = [t.task_name for t in all_tasks if t.is_completed]
-            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed]
+            completed_tasks = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
+            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
+            removed_tasks = [t.task_name for t in all_tasks if not t.is_active]
             
             log_texts = [f"- {log.created_at.strftime('%Y-%m-%d')}: {(log.user.name if log.user else 'System')} logged '{log.remarks}'" for log in imp_logs]
             
@@ -50,6 +51,7 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
                 f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
                 f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
                 f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
+                f"REMOVED/INACTIVE MILESTONES: {', '.join(removed_tasks) if removed_tasks else 'None'}\n"
                 f"Recent Log Updates (Past 7 Days):\n" + "\n".join(log_texts)
             )
             data_context.append(project_data)
@@ -153,8 +155,9 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
         data_context = []
         for imp in active_imps:
             all_tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == imp.id).all()
-            completed_tasks = [t.task_name for t in all_tasks if t.is_completed]
-            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed]
+            completed_tasks = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
+            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
+            removed_tasks = [t.task_name for t in all_tasks if not t.is_active]
             
             recent_logs = db.query(ImplementationLog).filter(
                 ImplementationLog.implementation_id == imp.id
@@ -169,6 +172,7 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
                 f"Timeline: {imp.start_date or 'N/A'} to {imp.expected_end_date or 'N/A'}\n"
                 f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
                 f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
+                f"REMOVED/INACTIVE MILESTONES: {', '.join(removed_tasks) if removed_tasks else 'None'}\n"
                 f"Last 10 Log Updates:\n" + "\n".join(log_texts)
             )
             data_context.append(project_data)
