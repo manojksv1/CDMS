@@ -82,6 +82,7 @@ def sync_implementation_milestones(db: Session, implementation_id: int):
     current_names = {t.task_name for t in current}
 
     added = 0
+    updated = 0
     for m in master_milestones:
         if m.task_name not in current_names:
             db_task = ImplementationTask(
@@ -92,10 +93,15 @@ def sync_implementation_milestones(db: Session, implementation_id: int):
             )
             db.add(db_task)
             added += 1
+        else:
+            for t in current:
+                if t.task_name == m.task_name and t.weight != m.weight:
+                    t.weight = m.weight
+                    updated += 1
 
     db.commit()
     recalculate_percentage(db, implementation_id)
-    return added
+    return added, updated
 
 def update_implementation(db: Session, implementation_id: int, implementation_update: ImplementationUpdate):
     db_imp = db.query(Implementation).filter(Implementation.id == implementation_id).first()
@@ -162,8 +168,23 @@ def recalculate_percentage(db: Session, implementation_id: int):
 def create_implementation_log(db: Session, implementation_id: int, user_id: int, log: ImplementationLogCreate):
     db_imp = db.query(Implementation).filter(Implementation.id == implementation_id).first()
     if not db_imp: return None
+    
+    current_stage = "Not Started"
+    tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == implementation_id).order_by(ImplementationTask.id).all()
+    if tasks:
+        current_stage = "Completed"
+        for task in tasks:
+            if not task.is_completed:
+                current_stage = task.section_name or "In Progress"
+                break
+                
     db_log = ImplementationLog(
-        implementation_id=implementation_id, user_id=user_id, date=log.date, remarks=log.remarks, percentage_at_time=db_imp.current_percentage
+        implementation_id=implementation_id, 
+        user_id=user_id, 
+        date=log.date, 
+        remarks=log.remarks, 
+        percentage_at_time=db_imp.current_percentage,
+        milestone_stage=current_stage
     )
     db.add(db_log)
     db.commit()

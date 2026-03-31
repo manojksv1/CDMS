@@ -20,7 +20,8 @@ import {
   RefreshCw,
   Save,
   CheckSquare,
-  Square
+  Square,
+  Filter
 } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -36,6 +37,7 @@ const ImplementationDetail: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(["DMS Implementation"]);
+  const [selectedLogSection, setSelectedLogSection] = useState<string | null>(null);
   const [pendingTasks, setPendingTasks] = useState<{[key: number]: boolean}>({});
   
   const [logFormData, setLogFormData] = useState({
@@ -164,9 +166,9 @@ const ImplementationDetail: React.FC = () => {
     setPendingTasks(newPending);
   };
 
-  const toggleSection = (section: string) => {
+  const toggleSection = (sectionKey: string) => {
     setExpandedSections(prev => 
-      prev.includes(section) ? prev.filter(s => s !== section) : [...prev, section]
+      prev.includes(sectionKey) ? prev.filter(s => s !== sectionKey) : [...prev, sectionKey]
     );
   };
 
@@ -292,14 +294,15 @@ const ImplementationDetail: React.FC = () => {
           </div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.75rem' }}>
-          <button 
-            onClick={() => setIsSyncModalOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#059669' }}
-          >
-            <RefreshCw size={18} /> Sync Template
-          </button>
-          <button onClick={() => setIsEditModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
-            <Settings size={18} /> Edit Project
+          {(project.status !== 'Live' && project.status !== 'Completed') && (
+            <button
+              onClick={() => setIsSyncModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, color: '#059669' }}
+            >
+              <RefreshCw size={18} /> Sync Template
+            </button>
+          )}
+          <button onClick={() => setIsEditModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #d1d5db', padding: '0.625rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>            <Settings size={18} /> Edit Project
           </button>
         </div>
       </div>
@@ -332,19 +335,29 @@ const ImplementationDetail: React.FC = () => {
         {/* Left Column: Daily Updates */}
         <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f9fafb' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <MessageSquare size={18} style={{ color: '#1a56db' }} />
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Activity & Daily Updates</h2>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <MessageSquare size={18} style={{ color: '#1a56db' }} />
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Activity & Daily Updates</h2>
+              </div>
+              {selectedLogSection && (
+                <div style={{ marginTop: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: '#ecfdf5', color: '#065f46', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>
+                  Filtering by: {selectedLogSection}
+                  <button onClick={() => setSelectedLogSection(null)} style={{ background: 'none', border: 'none', color: '#065f46', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 0 0 0.25rem' }}>
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
             </div>
             <button onClick={() => setIsLogModalOpen(true)} style={{ background: '#111827', color: 'white', border: 'none', borderRadius: '6px', padding: '0.5rem 1rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><Plus size={16} /> Log Update</button>
           </div>
           
           <div style={{ padding: '2rem' }}>
             <div style={{ borderLeft: '2px solid #e5e7eb', paddingLeft: '2rem', position: 'relative' }}>
-              {project.logs.length === 0 ? (
-                <div style={{ color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic', marginLeft: '-2rem', paddingLeft: '2rem' }}>No updates logged yet.</div>
+              {project.logs.filter((log: any) => !selectedLogSection || log.milestone_stage === selectedLogSection).length === 0 ? (
+                <div style={{ color: '#9ca3af', fontSize: '0.875rem', fontStyle: 'italic', marginLeft: '-2rem', paddingLeft: '2rem' }}>No updates logged yet for this section.</div>
               ) : (
-                project.logs.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log: any) => (
+                project.logs.filter((log: any) => !selectedLogSection || log.milestone_stage === selectedLogSection).sort((a: any, b: any) => new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime()).map((log: any) => (
                   <div key={log.id} style={{ marginBottom: '2.5rem', position: 'relative' }}>
                     <div style={{ position: 'absolute', left: '-2rem', top: '0.25rem', width: '12px', height: '12px', background: '#1a56db', borderRadius: '50%', transform: 'translateX(-50%)', border: '3px solid white', boxShadow: '0 0 0 1px #e5e7eb' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -354,7 +367,11 @@ const ImplementationDetail: React.FC = () => {
                             {formatInTimezone(log.created_at || log.date)}
                           </span>
                         </div>
-                        <span style={{ padding: '0.125rem 0.5rem', background: '#eff6ff', color: '#1e40af', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>{Math.round(log.percentage_at_time)}%</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          {log.milestone_stage && (
+                            <span style={{ padding: '0.125rem 0.5rem', background: '#ecfdf5', color: '#065f46', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>{log.milestone_stage}</span>
+                          )}
+                        </div>
                       </div>
                       <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>By {log.user_name || 'System'}</span>
                     </div>
@@ -402,46 +419,70 @@ const ImplementationDetail: React.FC = () => {
                     {expandedSections.includes(sectionName) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </div>
                   
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); toggleSectionCompletion(sectionName); }}
-                    title="Toggle All in Section"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
-                  >
-                    {sections[sectionName].every((t: any) => t.is_completed) ? <CheckSquare size={18} style={{ color: '#10b981' }} /> : <Square size={18} />}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setSelectedLogSection(selectedLogSection === sectionName ? null : sectionName); }}
+                      title="Filter Logs by Section"
+                      style={{ background: selectedLogSection === sectionName ? '#ecfdf5' : 'transparent', border: 'none', cursor: 'pointer', color: selectedLogSection === sectionName ? '#065f46' : '#9ca3af', display: 'flex', alignItems: 'center', padding: '0.25rem', borderRadius: '4px' }}
+                    >
+                      <Filter size={16} />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); toggleSectionCompletion(sectionName); }}
+                      title="Toggle All in Section"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', padding: '0.25rem' }}
+                    >
+                      {sections[sectionName].every((t: any) => t.is_completed) ? <CheckSquare size={18} style={{ color: '#10b981' }} /> : <Square size={18} />}
+                    </button>
+                  </div>
                 </div>
                 
                 {expandedSections.includes(sectionName) && (
                   <div style={{ padding: '0.5rem' }}>
-                    {sections[sectionName].map((task: any) => (
-                      <div 
-                        key={task.id} 
-                        onClick={() => handleToggleTask(task.id, task.is_completed)}
-                        style={{ 
-                          display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', 
-                          background: task.is_completed ? '#f0fdf4' : 'transparent', transition: 'all 0.2s', border: '1px solid',
-                          borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem',
-                          position: 'relative'
-                        }}
-                      >
-                        <div style={{ marginTop: '0.125rem' }}>
-                          {task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
-                            {/* NEW Detection: If task created after initial project setup */}
-                            {new Date(task.created_at).getTime() > new Date(project.created_at).getTime() + 60000 && (
-                              <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#1a56db', color: 'white', padding: '0.1rem 0.3rem', borderRadius: '4px', textTransform: 'uppercase' }}>New</span>
-                            )}
+                    {(() => {
+                      const sectionVersions = sections[sectionName].reduce((acc: any, task: any) => {
+                        const taskTime = new Date(task.created_at).getTime();
+                        const projectTime = new Date(project.created_at).getTime();
+                        const isOriginal = Math.abs(taskTime - projectTime) < 5 * 60000;
+                        const vKey = isOriginal ? "Original Scope" : `Added on ${new Date(task.created_at).toLocaleDateString()}`;
+                        if (!acc[vKey]) acc[vKey] = [];
+                        acc[vKey].push(task);
+                        return acc;
+                      }, {});
+
+                      return Object.keys(sectionVersions).map((vKey, vIdx) => (
+                        <div key={vKey} style={{ marginBottom: vIdx < Object.keys(sectionVersions).length - 1 ? '1rem' : '0' }}>
+                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: vKey === "Original Scope" ? '#9ca3af' : '#059669', marginBottom: '0.5rem', paddingLeft: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {vKey}
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{task.weight}%</span>
-                            {task.is_completed && task.completed_at && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
-                          </div>
+                          {sectionVersions[vKey].map((task: any) => (
+                            <div 
+                              key={task.id} 
+                              onClick={() => handleToggleTask(task.id, task.is_completed)}
+                              style={{ 
+                                display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', 
+                                background: task.is_completed ? '#f0fdf4' : 'transparent', transition: 'all 0.2s', border: '1px solid',
+                                borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem',
+                                position: 'relative'
+                              }}
+                            >
+                              <div style={{ marginTop: '0.125rem' }}>
+                                {task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                                  <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{task.weight}%</span>
+                                  {task.is_completed && task.completed_at && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 )}
               </div>

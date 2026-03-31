@@ -197,5 +197,5 @@ def sync_project_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    added = implementation_service.sync_implementation_milestones(db, implementation_id)
-    return {"message": f"Synced successfully. Added {added} new milestones."}
+    added, updated = implementation_service.sync_implementation_milestones(db, implementation_id)
+    return {"message": f"Synced successfully. Added {added} new milestones and updated {updated} existing weights."}

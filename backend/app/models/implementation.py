@@ -40,6 +40,7 @@ class ImplementationLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     remarks = Column(String, nullable=False)
     percentage_at_time = Column(Float, nullable=True)
+    milestone_stage = Column(String, nullable=True)
     
     user = relationship("User")
 

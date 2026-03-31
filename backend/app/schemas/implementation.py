@@ -29,6 +29,7 @@ class ImplementationLogBase(BaseModel):
     date: date
     remarks: str
     percentage_at_time: Optional[float] = None
+    milestone_stage: Optional[str] = None
 
 class ImplementationLogCreate(ImplementationLogBase):
     pass
