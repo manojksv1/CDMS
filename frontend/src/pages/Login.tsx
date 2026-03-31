@@ -78,7 +78,7 @@ const Login: React.FC = () => {
       <div className="login-content">
         <div className="login-left">
           <div className="brand-section">
-            <h1 className="brand-title">CLIENT DATA<br />MANAGEMENT<br />SYSTEM</h1>
+            <h1 className="brand-title">CUSTOMER DATA<br />MANAGEMENT<br />SYSTEM</h1>
             <p className="brand-subtitle">Powered by AI-driven insights and robust security.</p>
           </div>
         </div>
