@@ -98,7 +98,9 @@ const ImplementationDetail: React.FC = () => {
     }
   };
 
-  const handleToggleTask = (taskId: number, currentStatus: boolean) => {
+  const handleToggleTask = (taskId: number, currentStatus: boolean, isActive: boolean) => {
+    if (!isActive) return;
+
     // 1. Update project state locally for instant UI feedback
     setProject((prev: any) => {
       const updatedTasks = prev.tasks.map((t: any) => 
@@ -107,7 +109,7 @@ const ImplementationDetail: React.FC = () => {
       
       // Calculate local percentage
       const newPercentage = updatedTasks.reduce((acc: number, t: any) => 
-        acc + (t.is_completed ? t.weight : 0), 0
+        acc + (t.is_completed && t.is_active ? t.weight : 0), 0
       );
 
       return { ...prev, tasks: updatedTasks, current_percentage: newPercentage };
@@ -141,7 +143,8 @@ const ImplementationDetail: React.FC = () => {
   };
 
   const toggleSectionCompletion = (sectionName: string) => {
-    const sectionTasks = sections[sectionName];
+    const sectionTasks = sections[sectionName].filter((t: any) => t.is_active);
+    if (sectionTasks.length === 0) return;
     const allCompleted = sectionTasks.every((t: any) => t.is_completed);
     const targetStatus = !allCompleted;
 
@@ -149,7 +152,7 @@ const ImplementationDetail: React.FC = () => {
     
     setProject((prev: any) => {
       const updatedTasks = prev.tasks.map((t: any) => {
-        if (t.section_name === sectionName || (!t.section_name && sectionName === "General")) {
+        if (t.is_active && (t.section_name === sectionName || (!t.section_name && sectionName === "General"))) {
           newPending[t.id] = targetStatus;
           return { ...t, is_completed: targetStatus, completed_at: targetStatus ? new Date().toISOString() : null };
         }
@@ -157,7 +160,7 @@ const ImplementationDetail: React.FC = () => {
       });
 
       const newPercentage = updatedTasks.reduce((acc: number, t: any) => 
-        acc + (t.is_completed ? t.weight : 0), 0
+        acc + (t.is_completed && t.is_active ? t.weight : 0), 0
       );
 
       return { ...prev, tasks: updatedTasks, current_percentage: newPercentage };
@@ -458,24 +461,29 @@ const ImplementationDetail: React.FC = () => {
                           {sectionVersions[vKey].map((task: any) => (
                             <div 
                               key={task.id} 
-                              onClick={() => handleToggleTask(task.id, task.is_completed)}
+                              onClick={() => handleToggleTask(task.id, task.is_completed, task.is_active)}
                               style={{ 
-                                display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: 'pointer', 
-                                background: task.is_completed ? '#f0fdf4' : 'transparent', transition: 'all 0.2s', border: '1px solid',
-                                borderColor: task.is_completed ? '#dcfce7' : 'transparent', marginBottom: '0.25rem',
-                                position: 'relative'
+                                display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', borderRadius: '8px', cursor: task.is_active ? 'pointer' : 'not-allowed', 
+                                background: !task.is_active ? '#f3f4f6' : (task.is_completed ? '#f0fdf4' : 'transparent'), 
+                                transition: 'all 0.2s', border: '1px solid',
+                                borderColor: !task.is_active ? '#e5e7eb' : (task.is_completed ? '#dcfce7' : 'transparent'), marginBottom: '0.25rem',
+                                position: 'relative',
+                                opacity: !task.is_active ? 0.6 : 1
                               }}
                             >
                               <div style={{ marginTop: '0.125rem' }}>
-                                {task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />}
+                                {!task.is_active ? <X size={18} style={{ color: '#9ca3af' }} /> : (task.is_completed ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#d1d5db' }} />)}
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: task.is_completed ? '#065f46' : '#111827', lineHeight: 1.4 }}>{task.task_name}</div>
+                                  <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: !task.is_active ? '#6b7280' : (task.is_completed ? '#065f46' : '#111827'), lineHeight: 1.4, textDecoration: !task.is_active ? 'line-through' : 'none' }}>{task.task_name}</div>
+                                  {!task.is_active && (
+                                    <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#ef4444', color: 'white', padding: '0.1rem 0.3rem', borderRadius: '4px', textTransform: 'uppercase' }}>Removed</span>
+                                  )}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
-                                  <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{task.weight}%</span>
-                                  {task.is_completed && task.completed_at && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
+                                  <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{!task.is_active ? '0%' : `${task.weight}%`}</span>
+                                  {task.is_completed && task.completed_at && task.is_active && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>{new Date(task.completed_at).toLocaleDateString()}</span>}
                                 </div>
                               </div>
                             </div>

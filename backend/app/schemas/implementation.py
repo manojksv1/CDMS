@@ -8,6 +8,7 @@ class ImplementationTaskBase(BaseModel):
     section_name: Optional[str] = None
     weight: float
     is_completed: bool = False
+    is_active: Optional[bool] = True
 
 class ImplementationTaskCreate(ImplementationTaskBase):
     pass

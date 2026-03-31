@@ -77,31 +77,49 @@ def create_implementation(db: Session, implementation: ImplementationCreate):
 def sync_implementation_milestones(db: Session, implementation_id: int):
     # Fetch all global milestones via sections
     master_milestones = db.query(GlobalMilestone).all()
+    master_dict = {m.task_name: m for m in master_milestones}
 
     current = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == implementation_id).all()
     current_names = {t.task_name for t in current}
 
     added = 0
     updated = 0
+    removed = 0
+    
+    # Add new tasks
     for m in master_milestones:
         if m.task_name not in current_names:
             db_task = ImplementationTask(
                 implementation_id=implementation_id,
                 task_name=m.task_name,
                 section_name=m.section.name if m.section else "General",
-                weight=m.weight
+                weight=m.weight,
+                is_active=True
             )
             db.add(db_task)
             added += 1
+
+    # Update existing and deactivate missing
+    for t in current:
+        if t.task_name in master_dict:
+            m = master_dict[t.task_name]
+            # Ensure it is active
+            if not t.is_active:
+                t.is_active = True
+                updated += 1
+            if t.weight != m.weight:
+                t.weight = m.weight
+                updated += 1
         else:
-            for t in current:
-                if t.task_name == m.task_name and t.weight != m.weight:
-                    t.weight = m.weight
-                    updated += 1
+            # Task is no longer in the master template
+            if t.is_active:
+                t.is_active = False
+                t.weight = 0.0 # Remove weight from percentage calculations
+                removed += 1
 
     db.commit()
     recalculate_percentage(db, implementation_id)
-    return added, updated
+    return added, updated, removed
 
 def update_implementation(db: Session, implementation_id: int, implementation_update: ImplementationUpdate):
     db_imp = db.query(Implementation).filter(Implementation.id == implementation_id).first()
