@@ -14,6 +14,7 @@ const Clients: React.FC = () => {
   const showNotification = useNotificationStore(state => state.show);
   
   const [expandedClient, setExpandedClient] = useState<number | null>(null);
+  const [expandedLocation, setExpandedLocation] = useState<number | null>(null);
   
   // Modals state
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -23,7 +24,7 @@ const Clients: React.FC = () => {
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
-  
+
   const [exportClientId, setExportClientId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [selectedTask, setSelectedTask] = useState<any>(null);
@@ -52,6 +53,7 @@ const Clients: React.FC = () => {
     databaseVersion: true,
     clientTags: true,
     clientRemarks: true,
+    trackingLocation: true,
     taskName: true,
     taskBuildVersion: true,
     taskDueDate: true,
@@ -64,12 +66,16 @@ const Clients: React.FC = () => {
     name: '', database_type: 'MS SQL', database_version: '', 
     zone: '', client_location: '', poc_1: '', poc_2: '', 
     license_uat: '', license_prod: '', uat_version: '', prod_version: '',
-    remarks: '', tags: '' 
+    remarks: '', tags: '', location_name: '', existing_client_id: ''
   });
+  const [clientCreationMode, setClientCreationMode] = useState<'new'|'existing'>('new');
   const [editTaskFormData, setEditTaskFormData] = useState({ status: '', assigned_to: '', build_version: '', remarks: '' });
-  const [createTaskFormData, setCreateTaskFormData] = useState({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0 });
+  const [createTaskFormData, setCreateTaskFormData] = useState({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0, location_id: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchInfo, setShowSearchInfo] = useState(false);
+  const [companySearchQuery, setCompanySearchQuery] = useState('');
+  const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -168,7 +174,37 @@ const Clients: React.FC = () => {
   });
 
   const filteredClients = sortedClients.filter(c => {
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+
+    if (q.includes('=')) {
+      const parts = q.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const value = parts.slice(1).join('=').trim();
+        
+        switch (key) {
+          case 'tag':
+            return c.tags && c.tags.toLowerCase().includes(value);
+          case 'db':
+            return (c.database_type && c.database_type.toLowerCase().includes(value)) || 
+                   (c.database_version && c.database_version.toLowerCase().includes(value));
+          case 'zone':
+            return c.zone && c.zone.toLowerCase().includes(value);
+          case 'name':
+            return c.name.toLowerCase().includes(value);
+          case 'poc':
+            return (c.poc_1 && c.poc_1.toLowerCase().includes(value)) || 
+                   (c.poc_2 && c.poc_2.toLowerCase().includes(value));
+          case 'version':
+            return (c.uat_version && c.uat_version.toLowerCase().includes(value)) || 
+                   (c.prod_version && c.prod_version.toLowerCase().includes(value));
+          case 'status':
+            return c.status && c.status.toLowerCase().includes(value);
+        }
+      }
+    }
+
     return (
       c.name.toLowerCase().includes(q) ||
       (c.database_type && c.database_type.toLowerCase().includes(q)) ||
@@ -176,7 +212,6 @@ const Clients: React.FC = () => {
       (c.remarks && c.remarks.toLowerCase().includes(q)) ||
       (c.tags && c.tags.toLowerCase().includes(q)) ||
       (c.zone && c.zone.toLowerCase().includes(q)) ||
-      (c.client_location && c.client_location.toLowerCase().includes(q)) ||
       (c.poc_1 && c.poc_1.toLowerCase().includes(q)) ||
       (c.poc_2 && c.poc_2.toLowerCase().includes(q)) ||
       (c.uat_version && c.uat_version.toLowerCase().includes(q)) ||
@@ -188,13 +223,30 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await api.post('/clients/', clientFormData);
+      if (clientCreationMode === 'new') {
+        const clientData = { ...clientFormData };
+        const locationName = clientData.location_name;
+        delete (clientData as any).location_name;
+        delete (clientData as any).existing_client_id;
+        
+        const newClient = await api.post('/clients/', clientData);
+        await api.post('/locations/', { name: locationName || 'Main Office', client_id: newClient.data.id, hostname: '' });
+        showNotification("Client and Default Location created successfully!", "success");
+      } else {
+        if (!clientFormData.existing_client_id) {
+          showNotification("Please select an existing client", "error");
+          return;
+        }
+        await api.post('/locations/', { name: clientFormData.location_name || 'Branch Office', client_id: parseInt(clientFormData.existing_client_id), hostname: '' });
+        showNotification("New Location added to existing client successfully!", "success");
+      }
+      
       setIsClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
-      showNotification("Client created successfully!", "success");
+      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '', location_name: '', existing_client_id: '' });
       fetchData();
     } catch (err) {
       console.error(err);
+      showNotification("Failed to save. Check inputs.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -215,7 +267,9 @@ const Clients: React.FC = () => {
       uat_version: client.uat_version || '',
       prod_version: client.prod_version || '',
       remarks: client.remarks || '',
-      tags: client.tags || ''
+      tags: client.tags || '',
+      location_name: '',
+      existing_client_id: ''
     });
     setIsEditClientModalOpen(true);
   };
@@ -226,7 +280,7 @@ const Clients: React.FC = () => {
     try {
       await api.patch(`/clients/${selectedClient.id}`, clientFormData);
       setIsEditClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '' });
+      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '', location_name: '', existing_client_id: '' });
       showNotification("Client updated successfully!", "success");
       fetchData();
     } catch (err) {
@@ -236,8 +290,8 @@ const Clients: React.FC = () => {
     }
   };
 
-  const openCreateTask = (clientId: number) => {
-    setCreateTaskFormData({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: clientId });
+  const openCreateTask = (clientId: number, locationId?: string) => {
+    setCreateTaskFormData({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: clientId, location_id: locationId || '' });
     setIsCreateTaskModalOpen(true);
   };
 
@@ -245,13 +299,16 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      let locationId;
-      const clientLocation = locations.find(l => l.client_id === createTaskFormData.client_id);
-      if (clientLocation) {
-        locationId = clientLocation.id;
-      } else {
-        const newLoc = await api.post('/locations/', { name: 'Main Office', client_id: createTaskFormData.client_id, hostname: '' });
-        locationId = newLoc.data.id;
+      let locationId = createTaskFormData.location_id ? parseInt(createTaskFormData.location_id) : undefined;
+      
+      if (!locationId) {
+        const clientLocation = locations.find(l => l.client_id === createTaskFormData.client_id);
+        if (clientLocation) {
+          locationId = clientLocation.id;
+        } else {
+          const newLoc = await api.post('/locations/', { name: 'Main Office', client_id: createTaskFormData.client_id, hostname: '' });
+          locationId = newLoc.data.id;
+        }
       }
 
       const newTask = await api.post('/tasks/', {
@@ -330,7 +387,7 @@ const Clients: React.FC = () => {
       const headers = [];
     if (exportOptions.clientName) headers.push("Client Name");
     if (exportOptions.zone) headers.push("Zone");
-    if (exportOptions.clientLocation) headers.push("Location");
+    if (exportOptions.clientLocation) headers.push("Client City");
     if (exportOptions.poc1) headers.push("POC 1");
     if (exportOptions.poc2) headers.push("POC 2");
     if (exportOptions.licenseUat) headers.push("License (UAT)");
@@ -341,6 +398,7 @@ const Clients: React.FC = () => {
     if (exportOptions.databaseVersion) headers.push("Database Version");
     if (exportOptions.clientTags) headers.push("Tags");
     if (exportOptions.clientRemarks) headers.push("Client Remarks");
+    if (exportOptions.trackingLocation) headers.push("Tracking Location");
     if (exportOptions.taskName) headers.push("Tracking Phase");
     if (exportOptions.taskBuildVersion) headers.push("Build Version");
     if (exportOptions.taskDueDate) headers.push("Due Date");
@@ -378,6 +436,7 @@ const Clients: React.FC = () => {
         if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
         if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
         if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
+        if (exportOptions.trackingLocation) row.push('""');
         if (exportOptions.taskName) row.push('""');
         if (exportOptions.taskBuildVersion) row.push('""');
         if (exportOptions.taskDueDate) row.push('""');
@@ -401,6 +460,12 @@ const Clients: React.FC = () => {
           if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
           if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
           if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
+          
+          if (exportOptions.trackingLocation) {
+            const taskLoc = locations.find(l => l.id === t.location_id);
+            row.push(escapeCsv(taskLoc ? `${taskLoc.name} ${taskLoc.hostname ? `(${taskLoc.hostname})` : ''}`.trim() : ''));
+          }
+          
           if (exportOptions.taskName) row.push(escapeCsv(t.name));
           if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
           if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
@@ -435,13 +500,36 @@ const Clients: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Installation Tracker</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 10 }}>
-          <input 
-            type="text" 
-            placeholder="Search by Client, DB, Remarks..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px', background: 'white' }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input 
+              type="text" 
+              placeholder="Search by Client, DB, Remarks..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px', background: 'white' }}
+            />
+            <button
+              type="button"
+              onMouseEnter={() => setShowSearchInfo(true)}
+              onMouseLeave={() => setShowSearchInfo(false)}
+              style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#6b7280', cursor: 'help', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Info size={16} />
+            </button>
+            {showSearchInfo && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', padding: '1rem', width: '300px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', zIndex: 50, fontSize: '0.875rem', color: '#374151' }}>
+                <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>Advanced Search Filters</h4>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <li><strong>tag=xyz</strong> (Searches only Tags, e.g., tag=vip)</li>
+                  <li><strong>db=xyz</strong> (Searches DB Type/Version, e.g., db=mysql)</li>
+                  <li><strong>zone=xyz</strong> (Searches only Zone, e.g., zone=north)</li>
+                  <li><strong>name=xyz</strong> (Searches strictly by Client Name)</li>
+                  <li><strong>poc=xyz</strong> (Searches POC fields)</li>
+                  <li><strong>version=xyz</strong> (Searches UAT/Prod versions)</li>
+                </ul>
+              </div>
+            )}
+          </div>
           <button 
             type="button"
             onClick={(e) => { e.preventDefault(); openExportModal(null); }}
@@ -506,7 +594,7 @@ const Clients: React.FC = () => {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
                       {c.database_type ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <span style={{ background: '#e5e7eb', padding: '0.125rem 0.5rem', borderRadius: '4px', width: 'fit-content' }}>{c.database_type}</span>
                           {c.database_version && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>v{c.database_version}</span>}
                         </div>
@@ -565,23 +653,13 @@ const Clients: React.FC = () => {
                   
                   {isExpanded && (
                     <tr style={{ background: '#fcfcfd', borderBottom: '1px solid #e5e7eb' }}>
-                      <td colSpan={7} style={{ padding: '1.5rem 2rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                          <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>Tracking Phases</h3>
-                          {currentUser?.role !== 'ENGINEER' && (
-                            <button 
-                              type="button"
-                              onClick={() => openCreateTask(c.id)}
-                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'white', color: '#1a56db', border: '1px solid #1a56db', padding: '0.375rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}
-                            >
-                              <Plus size={14} /> Add Task
-                            </button>
-                          )}
-                        </div>
+                      <td colSpan={8} style={{ padding: '1.5rem 1rem' }}>
+                        {(() => {
+                          const clientLocs = locations.filter(l => l.client_id === c.id);
+                          const isSingleLocation = clientLocs.length === 1;
 
-                        {clientTasks.length > 0 ? (
-                          <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: 'white' }}>
+                          const renderTasksTable = (locTasks: any[]) => (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                               <thead style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
                                 <tr>
                                   <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Tracking Phase</th>
@@ -593,7 +671,7 @@ const Clients: React.FC = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {clientTasks.map(t => (
+                                {locTasks.map((t: any) => (
                                   <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                                     <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', fontWeight: 500, color: '#111827' }}>{t.name}</td>
                                     <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
@@ -636,12 +714,87 @@ const Clients: React.FC = () => {
                                 ))}
                               </tbody>
                             </table>
-                          </div>
-                        ) : (
-                          <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
-                            No tracking tasks have been added for this client yet.
-                          </div>
-                        )}
+                          );
+
+                          return (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>
+                                  {isSingleLocation ? 'Tracking Phases' : 'Locations & Tracking Phases'}
+                                </h3>
+                                {isSingleLocation && currentUser?.role !== 'ENGINEER' && (
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openCreateTask(c.id, clientLocs[0].id.toString()); }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'white', color: '#1a56db', border: '1px solid #1a56db', padding: '0.375rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}
+                                  >
+                                    <Plus size={14} /> Add Phase
+                                  </button>
+                                )}
+                              </div>
+
+                              {isSingleLocation ? (
+                                <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+                                  {(() => {
+                                    const singleLocTasks = tasks.filter(t => t.location_id === clientLocs[0].id);
+                                    return singleLocTasks.length > 0 ? renderTasksTable(singleLocTasks) : (
+                                      <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
+                                        No tracking tasks have been added yet.
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              ) : clientLocs.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                  {clientLocs.map(loc => {
+                                    const locTasks = tasks.filter(t => t.location_id === loc.id);
+                                    const isLocExpanded = expandedLocation === loc.id;
+                                    
+                                    return (
+                                      <div key={loc.id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
+                                        <div 
+                                          onClick={() => setExpandedLocation(isLocExpanded ? null : loc.id)}
+                                          style={{ padding: '0.75rem 1rem', background: isLocExpanded ? '#f9fafb' : 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: isLocExpanded ? '1px solid #e5e7eb' : 'none' }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            {isLocExpanded ? <ChevronDown size={16} color="#6b7280" /> : <ChevronRight size={16} color="#6b7280" />}
+                                            <span style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem' }}>{loc.name} {loc.hostname ? `(${loc.hostname})` : ''}</span>
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>{locTasks.length} Phase{locTasks.length !== 1 ? 's' : ''}</span>
+                                            {currentUser?.role !== 'ENGINEER' && (
+                                              <button 
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); openCreateTask(c.id, loc.id.toString()); }}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: '#f3f4f6', color: '#1a56db', border: '1px solid #d1d5db', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                                              >
+                                                <Plus size={12} /> Add Phase
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {isLocExpanded && (
+                                          <div style={{ padding: '1rem' }}>
+                                            {locTasks.length > 0 ? renderTasksTable(locTasks) : (
+                                              <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
+                                                No tracking tasks have been added for this location yet.
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
+                                  No tracking tasks or locations have been added for this client yet.
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                     </tr>
                   )}
@@ -650,7 +803,7 @@ const Clients: React.FC = () => {
             })}
             {clients.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>No clients found.</td>
+                <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>No clients found.</td>
               </tr>
             )}
           </tbody>
@@ -662,96 +815,150 @@ const Clients: React.FC = () => {
       {/* Client Create Modal */}
       {isClientModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
+          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', position: 'relative' }}>
             <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
               <X size={20} />
             </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Add New Client</h2>
+            <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', borderBottom: '1px solid #e5e7eb' }}>
+              <button type="button" onClick={() => setClientCreationMode('new')} style={{ background: 'none', border: 'none', padding: '0.5rem 0', fontWeight: 600, color: clientCreationMode === 'new' ? '#1a56db' : '#6b7280', borderBottom: clientCreationMode === 'new' ? '2px solid #1a56db' : '2px solid transparent', cursor: 'pointer', marginBottom: '-1px' }}>Create New Company</button>
+              <button type="button" onClick={() => setClientCreationMode('existing')} style={{ background: 'none', border: 'none', padding: '0.5rem 0', fontWeight: 600, color: clientCreationMode === 'existing' ? '#1a56db' : '#6b7280', borderBottom: clientCreationMode === 'existing' ? '2px solid #1a56db' : '2px solid transparent', cursor: 'pointer', marginBottom: '-1px' }}>Add Location to Existing</button>
+            </div>
             <form onSubmit={handleClientSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
-                <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
-                  <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- Select Zone --</option>
-                    <option value="North">North</option>
-                    <option value="South">South</option>
-                    <option value="East">East</option>
-                    <option value="West">West</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location (City Name)</label>
-                  <input type="text" value={clientFormData.client_location} onChange={e => setClientFormData({...clientFormData, client_location: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+              {clientCreationMode === 'new' ? (
+                <>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
+                    <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Default Location Name *</label>
+                    <input required type="text" placeholder="e.g. Main Office, HQ" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
+                    <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                      <option value="">-- Select Zone --</option>
+                      <option value="North">North</option>
+                      <option value="South">South</option>
+                      <option value="East">East</option>
+                      <option value="West">West</option>
+                    </select>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
-                  <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- None --</option>
-                    <option value="MS SQL">MS SQL</option>
-                    <option value="MySQL">MySQL</option>
-                    <option value="Oracle">Oracle</option>
-                    <option value="PostgreSQL">PostgreSQL</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
-                  <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
+                      <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
+                        <option value="">-- None --</option>
+                        <option value="MS SQL">MS SQL</option>
+                        <option value="MySQL">MySQL</option>
+                        <option value="Oracle">Oracle</option>
+                        <option value="PostgreSQL">PostgreSQL</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
+                      <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
-                  <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
-                  <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
+                      <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
+                      <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
-                  <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
-                  <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
+                      <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
+                      <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
-                  <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
-                  <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
+                      <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
+                      <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                    </div>
+                  </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
-                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
-                <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
-              </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
+                    <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  </div>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
+                    <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '1rem', position: 'relative' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Select Company *</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        required={!clientFormData.existing_client_id}
+                        type="text" 
+                        placeholder="Search and select company..." 
+                        value={companySearchQuery} 
+                        onChange={e => {
+                          setCompanySearchQuery(e.target.value);
+                          setClientFormData({...clientFormData, existing_client_id: ''});
+                          setIsCompanyDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsCompanyDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setIsCompanyDropdownOpen(false), 200)}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', outline: 'none' }} 
+                      />
+                      {isCompanyDropdownOpen && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto', zIndex: 10, marginTop: '4px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                          {clients.filter(c => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).length > 0 ? (
+                            clients.filter(c => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).map(c => (
+                              <div 
+                                key={c.id} 
+                                onClick={() => {
+                                  setClientFormData({...clientFormData, existing_client_id: c.id.toString()});
+                                  setCompanySearchQuery(c.name);
+                                  setIsCompanyDropdownOpen(false);
+                                }}
+                                style={{ padding: '0.5rem 1rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.875rem' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                              >
+                                {c.name}
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ padding: '0.5rem 1rem', color: '#6b7280', fontSize: '0.875rem' }}>No companies found</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>New Location Name *</label>
+                    <input required type="text" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} placeholder="e.g. Branch Office, HQ" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                  </div>
+                </>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
                 <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  {isSubmitting ? 'Saving...' : 'Save Client'}
+                  {isSubmitting ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
@@ -879,10 +1086,6 @@ const Clients: React.FC = () => {
                     <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.zone || 'N/A'}</span>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Location (City)</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.client_location || 'N/A'}</span>
-                  </div>
-                  <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Primary POC</label>
                     <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.poc_1 || 'N/A'}</span>
                   </div>
@@ -941,6 +1144,23 @@ const Clients: React.FC = () => {
             </button>
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Add Tracking Phase</h2>
             <form onSubmit={handleCreateTaskSubmit}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location *</label>
+                <select 
+                  required={locations.filter(l => l.client_id === createTaskFormData.client_id).length > 0} 
+                  value={createTaskFormData.location_id} 
+                  onChange={e => setCreateTaskFormData({...createTaskFormData, location_id: e.target.value})} 
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}
+                >
+                  <option value="">-- Select Location --</option>
+                  {locations.filter(l => l.client_id === createTaskFormData.client_id).map(l => (
+                    <option key={l.id} value={l.id}>{l.name} {l.hostname ? `(${l.hostname})` : ''}</option>
+                  ))}
+                </select>
+                {locations.filter(l => l.client_id === createTaskFormData.client_id).length === 0 && (
+                  <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>No locations found. A "Main Office" location will be created automatically.</p>
+                )}
+              </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Phase Name *</label>
                 <input required type="text" value={createTaskFormData.name} onChange={e => setCreateTaskFormData({...createTaskFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
