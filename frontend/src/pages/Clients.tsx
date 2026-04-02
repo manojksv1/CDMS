@@ -41,7 +41,6 @@ const Clients: React.FC = () => {
 
   const [exportOptions, setExportOptions] = useState({
     clientName: true,
-    zone: true,
     clientLocation: true,
     poc1: true,
     poc2: true,
@@ -189,16 +188,8 @@ const Clients: React.FC = () => {
           case 'db':
             return (c.database_type && c.database_type.toLowerCase().includes(value)) || 
                    (c.database_version && c.database_version.toLowerCase().includes(value));
-          case 'zone':
-            return c.zone && c.zone.toLowerCase().includes(value);
           case 'name':
             return c.name.toLowerCase().includes(value);
-          case 'poc':
-            return (c.poc_1 && c.poc_1.toLowerCase().includes(value)) || 
-                   (c.poc_2 && c.poc_2.toLowerCase().includes(value));
-          case 'version':
-            return (c.uat_version && c.uat_version.toLowerCase().includes(value)) || 
-                   (c.prod_version && c.prod_version.toLowerCase().includes(value));
           case 'status':
             return c.status && c.status.toLowerCase().includes(value);
         }
@@ -210,12 +201,7 @@ const Clients: React.FC = () => {
       (c.database_type && c.database_type.toLowerCase().includes(q)) ||
       (c.database_version && c.database_version.toLowerCase().includes(q)) ||
       (c.remarks && c.remarks.toLowerCase().includes(q)) ||
-      (c.tags && c.tags.toLowerCase().includes(q)) ||
-      (c.zone && c.zone.toLowerCase().includes(q)) ||
-      (c.poc_1 && c.poc_1.toLowerCase().includes(q)) ||
-      (c.poc_2 && c.poc_2.toLowerCase().includes(q)) ||
-      (c.uat_version && c.uat_version.toLowerCase().includes(q)) ||
-      (c.prod_version && c.prod_version.toLowerCase().includes(q))
+      (c.tags && c.tags.toLowerCase().includes(q))     
     );
   });
 
@@ -254,6 +240,9 @@ const Clients: React.FC = () => {
 
   const openEditClient = (client: any) => {
     setSelectedClient(client);
+    const clientLocs = locations.filter(l => l.client_id === client.id);
+    const defaultLoc = clientLocs.length > 0 ? clientLocs[0] : null;
+
     setClientFormData({
       name: client.name || '',
       database_type: client.database_type || 'MS SQL',
@@ -268,8 +257,8 @@ const Clients: React.FC = () => {
       prod_version: client.prod_version || '',
       remarks: client.remarks || '',
       tags: client.tags || '',
-      location_name: '',
-      existing_client_id: ''
+      location_name: defaultLoc ? defaultLoc.name : '',
+      existing_client_id: defaultLoc ? defaultLoc.id.toString() : ''
     });
     setIsEditClientModalOpen(true);
   };
@@ -278,7 +267,20 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await api.patch(`/clients/${selectedClient.id}`, clientFormData);
+      const clientData = { ...clientFormData };
+      const locationName = clientData.location_name;
+      const locationId = clientData.existing_client_id;
+      delete (clientData as any).location_name;
+      delete (clientData as any).existing_client_id;
+
+      await api.patch(`/clients/${selectedClient.id}`, clientData);
+      
+      if (locationId && locationName) {
+        await api.patch(`/locations/${locationId}`, { name: locationName });
+      } else if (!locationId && locationName) {
+        await api.post('/locations/', { name: locationName, client_id: selectedClient.id, hostname: '' });
+      }
+
       setIsEditClientModalOpen(false);
       setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '', location_name: '', existing_client_id: '' });
       showNotification("Client updated successfully!", "success");
@@ -386,14 +388,7 @@ const Clients: React.FC = () => {
     try {
       const headers = [];
     if (exportOptions.clientName) headers.push("Client Name");
-    if (exportOptions.zone) headers.push("Zone");
     if (exportOptions.clientLocation) headers.push("Client City");
-    if (exportOptions.poc1) headers.push("POC 1");
-    if (exportOptions.poc2) headers.push("POC 2");
-    if (exportOptions.licenseUat) headers.push("License (UAT)");
-    if (exportOptions.licenseProd) headers.push("License (Prod)");
-    if (exportOptions.uatVersion) headers.push("UAT Version");
-    if (exportOptions.prodVersion) headers.push("Prod Version");
     if (exportOptions.databaseType) headers.push("Database Type");
     if (exportOptions.databaseVersion) headers.push("Database Version");
     if (exportOptions.clientTags) headers.push("Tags");
@@ -424,14 +419,7 @@ const Clients: React.FC = () => {
       if (clientTasks.length === 0) {
         const row = [];
         if (exportOptions.clientName) row.push(escapeCsv(c.name));
-        if (exportOptions.zone) row.push(escapeCsv(c.zone));
         if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
-        if (exportOptions.poc1) row.push(escapeCsv(c.poc_1));
-        if (exportOptions.poc2) row.push(escapeCsv(c.poc_2));
-        if (exportOptions.licenseUat) row.push(escapeCsv(c.license_uat));
-        if (exportOptions.licenseProd) row.push(escapeCsv(c.license_prod));
-        if (exportOptions.uatVersion) row.push(escapeCsv(c.uat_version));
-        if (exportOptions.prodVersion) row.push(escapeCsv(c.prod_version));
         if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
         if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
         if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
@@ -448,14 +436,7 @@ const Clients: React.FC = () => {
         clientTasks.forEach(t => {
           const row = [];
           if (exportOptions.clientName) row.push(escapeCsv(c.name));
-          if (exportOptions.zone) row.push(escapeCsv(c.zone));
           if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
-          if (exportOptions.poc1) row.push(escapeCsv(c.poc_1));
-          if (exportOptions.poc2) row.push(escapeCsv(c.poc_2));
-          if (exportOptions.licenseUat) row.push(escapeCsv(c.license_uat));
-          if (exportOptions.licenseProd) row.push(escapeCsv(c.license_prod));
-          if (exportOptions.uatVersion) row.push(escapeCsv(c.uat_version));
-          if (exportOptions.prodVersion) row.push(escapeCsv(c.prod_version));
           if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
           if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
           if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
@@ -522,7 +503,6 @@ const Clients: React.FC = () => {
                 <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <li><strong>tag=xyz</strong> (Searches only Tags, e.g., tag=vip)</li>
                   <li><strong>db=xyz</strong> (Searches DB Type/Version, e.g., db=mysql)</li>
-                  <li><strong>zone=xyz</strong> (Searches only Zone, e.g., zone=north)</li>
                   <li><strong>name=xyz</strong> (Searches strictly by Client Name)</li>
                   <li><strong>poc=xyz</strong> (Searches POC fields)</li>
                   <li><strong>version=xyz</strong> (Searches UAT/Prod versions)</li>
@@ -834,16 +814,6 @@ const Clients: React.FC = () => {
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Default Location Name *</label>
                     <input required type="text" placeholder="e.g. Main Office, HQ" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
                   </div>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
-                    <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                      <option value="">-- Select Zone --</option>
-                      <option value="North">North</option>
-                      <option value="South">South</option>
-                      <option value="East">East</option>
-                      <option value="West">West</option>
-                    </select>
-                  </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                     <div>
@@ -863,38 +833,11 @@ const Clients: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
-                      <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
-                      <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                  </div>
+                  
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
-                      <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
-                      <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                  </div>
+                  
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
-                      <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
-                      <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                  </div>
+                  
 
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
@@ -979,21 +922,9 @@ const Clients: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
                 <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Zone</label>
-                  <select value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- Select Zone --</option>
-                    <option value="North">North</option>
-                    <option value="South">South</option>
-                    <option value="East">East</option>
-                    <option value="West">West</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location (City Name)</label>
-                  <input type="text" value={clientFormData.client_location} onChange={e => setClientFormData({...clientFormData, client_location: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Default Location Name</label>
+                <input type="text" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} placeholder="e.g. Main Office, HQ" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
@@ -1014,38 +945,11 @@ const Clients: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 1</label>
-                  <input type="text" value={clientFormData.poc_1} onChange={e => setClientFormData({...clientFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>POC 2</label>
-                  <input type="text" value={clientFormData.poc_2} onChange={e => setClientFormData({...clientFormData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+              
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (UAT)</label>
-                  <input type="text" value={clientFormData.license_uat} onChange={e => setClientFormData({...clientFormData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>License (Prod)</label>
-                  <input type="text" value={clientFormData.license_prod} onChange={e => setClientFormData({...clientFormData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+              
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>UAT Version</label>
-                  <input type="text" value={clientFormData.uat_version} onChange={e => setClientFormData({...clientFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Prod Version</label>
-                  <input type="text" value={clientFormData.prod_version} onChange={e => setClientFormData({...clientFormData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
+              
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
@@ -1076,50 +980,8 @@ const Clients: React.FC = () => {
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', color: '#111827', borderBottom: '2px solid #f3f4f6', paddingBottom: '0.75rem' }}>
               Client Details: {selectedClient.name}
             </h2>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-              <div>
-                <h3 style={{ fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em', marginBottom: '1rem' }}>Location & Contacts</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Zone</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.zone || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Primary POC</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.poc_1 || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Secondary POC</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.poc_2 || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
 
-              <div>
-                <h3 style={{ fontSize: '0.875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em', marginBottom: '1rem' }}>Versions & Licensing</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>Production Version</label>
-                    <span style={{ fontSize: '0.875rem', color: '#046c4e', fontWeight: 600 }}>{selectedClient.prod_version || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>UAT Version</label>
-                    <span style={{ fontSize: '0.875rem', color: '#1a56db', fontWeight: 600 }}>{selectedClient.uat_version || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>License (UAT)</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.license_uat || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>License (Prod)</label>
-                    <span style={{ fontSize: '0.875rem', color: '#111827' }}>{selectedClient.license_prod || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ marginTop: '1rem', paddingTop: '1rem' }}>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Remarks</label>
               <div style={{ fontSize: '0.875rem', color: '#4b5563', background: '#f9fafb', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', minHeight: '60px' }}>
                 {selectedClient.remarks || 'No remarks provided.'}
