@@ -48,6 +48,7 @@ def generate_weekly_executive_summary(db: Session, current_user: User, summary_t
             
             project_data = (
                 f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%)\n"
+                f"POC: {imp.poc_1 or 'N/A'}, Version: {imp.uat_version or 'N/A'}\n"
                 f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
                 f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
                 f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
@@ -166,9 +167,9 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
             log_texts = [f"- {log.created_at.strftime('%Y-%m-%d')}: {(log.user.name if log.user else 'System')} logged '{log.remarks}'" for log in recent_logs]
             
             project_data = (
-                f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%, Version/Build: {imp.version_details or 'N/A'})\n"
+                f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%, UAT Version: {imp.uat_version or 'N/A'}, Prod Version: {imp.prod_version or 'N/A'})\n"
                 f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
-                f"POC: {imp.poc_name or 'N/A'}, PO Date: {imp.po_date or 'N/A'}\n"
+                f"POC 1: {imp.poc_1 or 'N/A'}, POC 2: {imp.poc_2 or 'N/A'}, PO Date: {imp.po_date or 'N/A'}\n"
                 f"Timeline: {imp.start_date or 'N/A'} to {imp.expected_end_date or 'N/A'}\n"
                 f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
                 f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
@@ -199,15 +200,8 @@ def handle_chat_query(db: Session, current_user: User, query: str, summary_type:
             
             if client and client.id not in client_info_set:
                 client_info_set.add(client.id)
-                db_type = client.database_type or 'N/A'
-                db_ver = client.database_version or 'N/A'
-                uat_ver = client.uat_version or 'N/A'
-                prod_ver = client.prod_version or 'N/A'
-                client_loc = client.client_location or 'N/A'
-                zone = client.zone or 'N/A'
                 c_remarks = client.remarks or 'None'
-                poc_info = f"POC 1: {client.poc_1 or 'N/A'}, POC 2: {client.poc_2 or 'N/A'}"
-                data_context.append(f"\n[CLIENT INFO] Name: {client_name}, Database: {db_type} {db_ver}, UAT Version: {uat_ver}, Prod Version: {prod_ver}, Region/Location: {client_loc}, Zone: {zone}, {poc_info}, Client Notes: {c_remarks}\nTasks for {client_name}:")
+                data_context.append(f"\n[CLIENT INFO] Name: {client_name}, Client Notes: {c_remarks}\nTasks for {client_name}:")
                 
             assignee = t.assignee.name if t.assignee else "Unassigned"
             build_ver = t.build_version or 'N/A'

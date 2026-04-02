@@ -13,8 +13,12 @@ class Implementation(Base):
     
     # Project Metadata
     po_date = Column(Date, nullable=True)
-    poc_name = Column(String, nullable=True)
-    version_details = Column(String, nullable=True)
+    poc_1 = Column(String, nullable=True)
+    poc_2 = Column(String, nullable=True)
+    license_uat = Column(String, nullable=True)
+    license_prod = Column(String, nullable=True)
+    uat_version = Column(String, nullable=True)
+    prod_version = Column(String, nullable=True)
     start_date = Column(Date, nullable=True)
     expected_end_date = Column(Date, nullable=True)
     

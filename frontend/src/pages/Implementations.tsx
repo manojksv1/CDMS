@@ -13,12 +13,12 @@ import {
   Clock,
   AlertCircle,
   X,
-  UserCheck
+  UserCheck,
+  Download
 } from 'lucide-react';
 
 const Implementations: React.FC = () => {
   const [implementations, setImplementations] = useState<any[]>([]);
-  const [clients, setClients] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,25 +30,39 @@ const Implementations: React.FC = () => {
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isQuickClientModalOpen, setIsQuickClientModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
+  const [exportOptions, setExportOptions] = useState({
+    companyName: true,
+    engineer: true,
+    status: true,
+    targetDate: true,
+    poc1: true,
+    poc2: true,
+    licenseUat: true,
+    licenseProd: true,
+    uatVersion: true,
+    prodVersion: true,
+    poDate: true,
+    startDate: true,
+    remarks: true
+  });
+
   const [formData, setFormData] = useState({
     company_name: '',
     zone: '',
     assigned_user_id: '',
     po_date: '',
-    poc_name: '',
-    version_details: '',
+    poc_1: '',
+    poc_2: '',
+    license_uat: '',
+    license_prod: '',
+    uat_version: '',
+    prod_version: '',
     start_date: '',
     expected_end_date: '',
     status: 'InProgress',
     status_remarks: ''
-  });
-
-  const [clientFormData, setClientFormData] = useState({
-    name: '',
-    zone: '',
-    client_location: ''
   });
 
   useEffect(() => {
@@ -59,8 +73,7 @@ const Implementations: React.FC = () => {
     setIsLoading(true);
     try {
       const requests: Promise<any>[] = [
-        api.get('/implementations/'),
-        api.get('/clients/?limit=1000')
+        api.get('/implementations/')
       ];
       
       if (currentUser?.role && currentUser.role !== 'ENGINEER') {
@@ -69,9 +82,8 @@ const Implementations: React.FC = () => {
       
       const responses = await Promise.all(requests);
       setImplementations(responses[0]?.data || []);
-      setClients(responses[1]?.data || []);
-      if (responses[2]) {
-        setUsers(responses[2].data.filter((u: any) => u.role === 'ENGINEER'));
+      if (responses[1]) {
+        setUsers(responses[1].data.filter((u: any) => u.role === 'ENGINEER'));
       }
     } catch (err) {
       console.error("Fetch Error:", err);
@@ -100,8 +112,12 @@ const Implementations: React.FC = () => {
         zone: '',
         assigned_user_id: '',
         po_date: '',
-        poc_name: '',
-        version_details: '',
+        poc_1: '',
+        poc_2: '',
+        license_uat: '',
+        license_prod: '',
+        uat_version: '',
+        prod_version: '',
         start_date: '',
         expected_end_date: '',
         status: 'InProgress',
@@ -113,37 +129,65 @@ const Implementations: React.FC = () => {
     }
   };
 
-  const handleQuickClientCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleExportCSV = () => {
     try {
-      const res = await api.post('/clients/', clientFormData);
-      const newClients = [...clients, res.data];
-      setClients(newClients);
-      setFormData({ 
-        ...formData, 
-        company_name: res.data.name,
-        zone: res.data.zone || '' 
-      });
-      setIsQuickClientModalOpen(false);
-      setClientFormData({ name: '', zone: '', client_location: '' });
-      showNotification("Client record created and name copied!", "success");
-    } catch (err) {
-      console.error("Quick Client Error:", err);
-    }
-  };
+      const headers = [];
+      if (exportOptions.companyName) headers.push("Company Name");
+      if (exportOptions.engineer) headers.push("Engineer");
+      if (exportOptions.status) headers.push("Status");
+      if (exportOptions.targetDate) headers.push("Target Date");
+      if (exportOptions.poc1) headers.push("POC 1");
+      if (exportOptions.poc2) headers.push("POC 2");
+      if (exportOptions.licenseUat) headers.push("License (UAT)");
+      if (exportOptions.licenseProd) headers.push("License (Prod)");
+      if (exportOptions.uatVersion) headers.push("UAT Version");
+      if (exportOptions.prodVersion) headers.push("Prod Version");
+      if (exportOptions.poDate) headers.push("PO Date");
+      if (exportOptions.startDate) headers.push("Start Date");
+      if (exportOptions.remarks) headers.push("Status Remarks");
 
-  const handleClientSelect = (clientId: string) => {
-    if (!clientId) {
-      setFormData({ ...formData, company_name: '', zone: '' });
-      return;
-    }
-    const selectedClient = clients.find(c => c.id.toString() === clientId);
-    if (selectedClient) {
-      setFormData({ 
-        ...formData, 
-        company_name: selectedClient.name,
-        zone: selectedClient.zone || '' 
+      const csvRows = [];
+      csvRows.push(headers.join(","));
+
+      const escapeCsv = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
+        return `"${str}"`;
+      };
+
+      filteredImplementations.forEach(imp => {
+        const row = [];
+        if (exportOptions.companyName) row.push(escapeCsv(imp.company_name));
+        if (exportOptions.engineer) row.push(escapeCsv(imp.assigned_user_name || 'Unassigned'));
+        if (exportOptions.status) row.push(escapeCsv(imp.status));
+        if (exportOptions.targetDate) row.push(escapeCsv(imp.expected_end_date));
+        if (exportOptions.poc1) row.push(escapeCsv(imp.poc_1));
+        if (exportOptions.poc2) row.push(escapeCsv(imp.poc_2));
+        if (exportOptions.licenseUat) row.push(escapeCsv(imp.license_uat));
+        if (exportOptions.licenseProd) row.push(escapeCsv(imp.license_prod));
+        if (exportOptions.uatVersion) row.push(escapeCsv(imp.uat_version));
+        if (exportOptions.prodVersion) row.push(escapeCsv(imp.prod_version));
+        if (exportOptions.poDate) row.push(escapeCsv(imp.po_date));
+        if (exportOptions.startDate) row.push(escapeCsv(imp.start_date));
+        if (exportOptions.remarks) row.push(escapeCsv(imp.status_remarks));
+        csvRows.push(row.join(","));
       });
+
+      const csvString = csvRows.join("\n");
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `software_implementations_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setIsExportModalOpen(false);
+      showNotification("CSV Export started", "success");
+    } catch (err) {
+      console.error(err);
+      showNotification("Export failed", "error");
     }
   };
 
@@ -182,12 +226,20 @@ const Implementations: React.FC = () => {
         </div>
         
         {currentUser?.role !== 'ENGINEER' && (
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
-          >
-            <Plus size={18} /> New Project
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button 
+              onClick={() => setIsExportModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#374151', padding: '0.625rem 1.25rem', borderRadius: '8px', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: 600 }}
+            >
+              <Download size={18} /> Export
+            </button>
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+            >
+              <Plus size={18} /> New Project
+            </button>
+          </div>
         )}
       </div>
 
@@ -246,7 +298,7 @@ const Implementations: React.FC = () => {
                   <td style={{ padding: '1rem' }}>
                     <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>{imp.company_name}</div>
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><User size={12} /> POC: {imp.poc_name || 'None'}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><User size={12} /> POC: {imp.poc_1 || 'None'}</span>
                       <span style={{ color: '#e5e7eb' }}>|</span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#1a56db', fontWeight: 500 }}><UserCheck size={12} /> Engineer: {imp.assigned_user_name || 'Unassigned'}</span>
                     </div>
@@ -309,25 +361,6 @@ const Implementations: React.FC = () => {
             </div>
             
             <form onSubmit={handleAddImplementation}>
-              <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid #e5e7eb' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <label style={{ fontSize: '0.875rem', fontWeight: 600 }}>Lookup Company from CRM</label>
-                  <button 
-                    type="button"
-                    onClick={() => setIsQuickClientModalOpen(true)}
-                    style={{ fontSize: '0.75rem', color: '#1a56db', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-                  >
-                    + Create New CRM Record
-                  </button>
-                </div>
-                <select onChange={e => handleClientSelect(e.target.value)} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="">-- Optional: Choose existing --</option>
-                  {clients.sort((a,b) => a.name.localeCompare(b.name)).map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Company Name *</label>
@@ -346,16 +379,38 @@ const Implementations: React.FC = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>POC Name</label>
-                  <input type="text" value={formData.poc_name} onChange={e => setFormData({...formData, poc_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>POC 1</label>
+                  <input type="text" value={formData.poc_1} onChange={e => setFormData({...formData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>PO Date</label>
-                  <input type="date" value={formData.po_date} onChange={e => setFormData({...formData, po_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>POC 2</label>
+                  <input type="text" value={formData.poc_2} onChange={e => setFormData({...formData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>License (UAT)</label>
+                  <input type="text" value={formData.license_uat} onChange={e => setFormData({...formData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>License (Prod)</label>
+                  <input type="text" value={formData.license_prod} onChange={e => setFormData({...formData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>UAT Version</label>
+                  <input type="text" value={formData.uat_version} onChange={e => setFormData({...formData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Prod Version</label>
+                  <input type="text" value={formData.prod_version} onChange={e => setFormData({...formData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status</label>
                   <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
@@ -365,6 +420,10 @@ const Implementations: React.FC = () => {
                     <option value="Live">Live</option>
                     <option value="Completed">Completed</option>
                   </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>PO Date</label>
+                  <input type="date" value={formData.po_date} onChange={e => setFormData({...formData, po_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
               </div>
 
@@ -402,29 +461,37 @@ const Implementations: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Client Modal */}
-      {isQuickClientModalOpen && (
+      {/* Export Modal */}
+      {isExportModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '400px', padding: '2rem', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
-            <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '1.5rem' }}>Create CRM Client Record</h3>
-            <form onSubmit={handleQuickClientCreate}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Company Name *</label>
-                <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} placeholder="e.g. GE Vernova" />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Zone</label>
-                <input type="text" value={clientFormData.zone} onChange={e => setClientFormData({...clientFormData, zone: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} placeholder="e.g. North" />
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Location</label>
-                <input type="text" value={clientFormData.client_location} onChange={e => setClientFormData({...clientFormData, client_location: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} placeholder="e.g. Noida" />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setIsQuickClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem' }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#111827', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem' }}>Save & Copy Name</button>
-              </div>
-            </form>
+          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Export Software Projects</h2>
+              <button onClick={() => setIsExportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
+            </div>
+            
+            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>Select the columns you wish to include in your CSV export.</p>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '2rem' }}>
+              {Object.entries(exportOptions).map(([key, value]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={value} 
+                    onChange={() => setExportOptions({...exportOptions, [key]: !value})}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  {key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+              <button onClick={handleExportCSV} style={{ padding: '0.625rem 1.25rem', background: '#111827', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Download size={18} /> Download CSV
+              </button>
+            </div>
           </div>
         </div>
       )}

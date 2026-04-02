@@ -46,8 +46,12 @@ const ImplementationDetail: React.FC = () => {
   });
 
   const [editFormData, setEditFormData] = useState({
-    poc_name: '',
-    version_details: '',
+    poc_1: '',
+    poc_2: '',
+    license_uat: '',
+    license_prod: '',
+    uat_version: '',
+    prod_version: '',
     po_date: '',
     start_date: '',
     expected_end_date: '',
@@ -75,8 +79,12 @@ const ImplementationDetail: React.FC = () => {
       
       setProject(projectRes.data);
       setEditFormData({
-        poc_name: projectRes.data.poc_name || '',
-        version_details: projectRes.data.version_details || '',
+        poc_1: projectRes.data.poc_1 || '',
+        poc_2: projectRes.data.poc_2 || '',
+        license_uat: projectRes.data.license_uat || '',
+        license_prod: projectRes.data.license_prod || '',
+        uat_version: projectRes.data.uat_version || '',
+        prod_version: projectRes.data.prod_version || '',
         po_date: projectRes.data.po_date || '',
         start_date: projectRes.data.start_date || '',
         expected_end_date: projectRes.data.expected_end_date || '',
@@ -533,7 +541,7 @@ const ImplementationDetail: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>POC Name</label>
-                  <input type="text" value={editFormData.poc_name} onChange={e => setEditFormData({...editFormData, poc_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={editFormData.poc_1} onChange={e => setEditFormData({...editFormData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
                 {currentUser?.role !== 'ENGINEER' && (
                   <div>
@@ -550,7 +558,7 @@ const ImplementationDetail: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Version Details</label>
-                  <input type="text" value={editFormData.version_details} onChange={e => setEditFormData({...editFormData, version_details: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                  <input type="text" value={editFormData.uat_version} onChange={e => setEditFormData({...editFormData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status</label>

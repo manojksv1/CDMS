@@ -42,12 +42,6 @@ const Clients: React.FC = () => {
   const [exportOptions, setExportOptions] = useState({
     clientName: true,
     clientLocation: true,
-    poc1: true,
-    poc2: true,
-    licenseUat: true,
-    licenseProd: true,
-    uatVersion: true,
-    prodVersion: true,
     databaseType: true,
     databaseVersion: true,
     clientTags: true,
