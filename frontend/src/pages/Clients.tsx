@@ -1,22 +1,64 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { Plus, X, ChevronDown, ChevronRight, Edit2, Download, MessageSquare, Send, Reply, Trash, Info } from 'lucide-react';
+import {
+  Plus, X, ChevronDown, ChevronRight, Edit2, Download,
+  MessageSquare, Send, Reply, Trash, Info, Search,
+} from 'lucide-react';
+import Modal from '../components/Modal';
+import { TableSkeleton } from '../components/Skeleton';
+import type { Client, Location, Task, User, Comment, TaskStatus } from '../types/api';
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface ClientFormData {
+  name: string; database_type: string; database_version: string;
+  remarks: string; tags: string; location_name: string; existing_client_id: string;
+}
+
+interface EditTaskFormData {
+  status: TaskStatus; assigned_to: string; build_version: string; remarks: string;
+}
+
+interface CreateTaskFormData {
+  name: string; due_date: string; build_version: string;
+  remarks: string; assigned_to: string; client_id: number; location_id: string;
+}
+
+const EMPTY_CLIENT_FORM: ClientFormData = {
+  name: '', database_type: 'MS SQL', database_version: '',
+  remarks: '', tags: '', location_name: '', existing_client_id: '',
+};
+
+const STATUS_BADGE: Record<TaskStatus, string> = {
+  COMPLETED: 'badge-green', IN_PROGRESS: 'badge-blue',
+  BLOCKED: 'badge-red', NOT_STARTED: 'badge-gray',
+};
+
+const esc = (v: unknown): string => {
+  if (v == null) return '""';
+  return `"${String(v).replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 const Clients: React.FC = () => {
-  const [clients, setClients] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  
-  const currentUser = useAuthStore(state => state.user);
-  const showNotification = useNotificationStore(state => state.show);
-  
+  const [clients, setClients] = useState<Client[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const currentUser = useAuthStore((s) => s.user);
+  const showNotification = useNotificationStore((s) => s.show);
+
   const [expandedClient, setExpandedClient] = useState<number | null>(null);
   const [expandedLocation, setExpandedLocation] = useState<number | null>(null);
-  
-  // Modals state
+
+  // Modal states
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isEditClientModalOpen, setIsEditClientModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
@@ -26,268 +68,170 @@ const Clients: React.FC = () => {
   const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
 
   const [exportClientId, setExportClientId] = useState<number | null>(null);
-  const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const openInfo = (client: any) => {
-    setSelectedClient(client);
-    setIsInfoModalOpen(true);
-  };
-
-  // Comments state
-  const [comments, setComments] = useState<any[]>([]);
+  // Comments
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<number | null>(null);
 
-  const [exportOptions, setExportOptions] = useState({
-    clientName: true,
-    clientLocation: true,
-    databaseType: true,
-    databaseVersion: true,
-    clientTags: true,
-    clientRemarks: true,
-    trackingLocation: true,
-    taskName: true,
-    taskBuildVersion: true,
-    taskDueDate: true,
-    taskPOC: true,
-    taskStatus: true,
-    taskRemarks: true
-  });
-
-  const [clientFormData, setClientFormData] = useState({ 
-    name: '', database_type: 'MS SQL', database_version: '', 
-    zone: '', client_location: '', poc_1: '', poc_2: '', 
-    license_uat: '', license_prod: '', uat_version: '', prod_version: '',
-    remarks: '', tags: '', location_name: '', existing_client_id: ''
-  });
-  const [clientCreationMode, setClientCreationMode] = useState<'new'|'existing'>('new');
-  const [editTaskFormData, setEditTaskFormData] = useState({ status: '', assigned_to: '', build_version: '', remarks: '' });
-  const [createTaskFormData, setCreateTaskFormData] = useState({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0, location_id: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Search
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showSearchInfo, setShowSearchInfo] = useState(false);
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // Forms
+  const [clientCreationMode, setClientCreationMode] = useState<'new' | 'existing'>('new');
+  const [clientFormData, setClientFormData] = useState<ClientFormData>(EMPTY_CLIENT_FORM);
+  const [editTaskFormData, setEditTaskFormData] = useState<EditTaskFormData>({
+    status: 'NOT_STARTED', assigned_to: '', build_version: '', remarks: '',
+  });
+  const [createTaskFormData, setCreateTaskFormData] = useState<CreateTaskFormData>({
+    name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: 0, location_id: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchData = async () => {
+  const [exportOptions, setExportOptions] = useState({
+    clientName: true, clientLocation: true, databaseType: true, databaseVersion: true,
+    clientTags: true, clientRemarks: true, trackingLocation: true, taskName: true,
+    taskBuildVersion: true, taskDueDate: true, taskPOC: true, taskStatus: true, taskRemarks: true,
+  });
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
     try {
       const [clientRes, locRes, taskRes, userRes] = await Promise.all([
-        api.get('/clients/?limit=500'),
-        api.get('/locations/?limit=500'),
-        api.get('/tasks/?limit=500'),
-        api.get('/users/?limit=100')
+        api.get<Client[]>('/clients/?limit=500'),
+        api.get<Location[]>('/locations/?limit=500'),
+        api.get<Task[]>('/tasks/?limit=500'),
+        api.get<User[]>('/users/?limit=100'),
       ]);
       setClients(clientRes.data);
       setLocations(locRes.data);
       setTasks(taskRes.data);
       setUsers(userRes.data);
-    } catch (err) {
-      console.error("Fetch data error:", err);
-    }
-  };
+    } catch { /* handled by interceptor */ } finally { setIsLoading(false); }
+  }, []);
 
-  const fetchComments = async (taskId: number) => {
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const fetchComments = useCallback(async (taskId: number) => {
     try {
-      const res = await api.get(`/comments/task/${taskId}`);
+      const res = await api.get<Comment[]>(`/comments/task/${taskId}`);
       setComments(res.data);
-    } catch (err) {
-      console.error("Fetch comments error:", err);
-    }
-  };
+    } catch { /* handled */ }
+  }, []);
 
-  const handleAddComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
-    try {
-      await api.post('/comments/', {
-        task_id: selectedTask.id,
-        content: newComment,
-        parent_id: replyTo
-      });
-      setNewComment('');
-      setReplyTo(null);
-      showNotification("Comment added!", "success");
-      fetchComments(selectedTask.id);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // ---------------------------------------------------------------------------
+  // Derived data
+  // ---------------------------------------------------------------------------
+  const getClientTasks = useCallback((clientId: number): Task[] => {
+    const locIds = new Set(locations.filter((l) => l.client_id === clientId).map((l) => l.id));
+    return tasks.filter((t) => locIds.has(t.location_id));
+  }, [locations, tasks]);
 
-  const handleDeleteComment = async (id: number) => {
-    if (window.confirm("Delete this comment?")) {
-      try {
-        await api.delete(`/comments/${id}`);
-        showNotification("Comment deleted", "info");
-        fetchComments(selectedTask.id);
-      } catch (err) {
-        console.error(err);
-      }
-    }
-  };
+  const filteredClients = useMemo(() => {
+    const q = debouncedSearch.toLowerCase().trim();
+    const sorted = [...clients].sort((a, b) => {
+      const aTasks = getClientTasks(a.id);
+      const bTasks = getClientTasks(b.id);
+      const aPct = aTasks.length > 0 ? aTasks.filter((t) => t.status === 'COMPLETED').length / aTasks.length : 0;
+      const bPct = bTasks.length > 0 ? bTasks.filter((t) => t.status === 'COMPLETED').length / bTasks.length : 0;
+      if (aPct !== bPct) return bPct - aPct;
+      return a.name.localeCompare(b.name);
+    });
 
-  const openComments = (task: any) => {
-    setSelectedTask(task);
-    fetchComments(task.id);
-    setIsCommentsModalOpen(true);
-  };
-
-  const getClientTasks = (clientId: number) => {
-    const clientLocs = locations.filter(l => l.client_id === clientId).map(l => l.id);
-    return tasks.filter(t => clientLocs.includes(t.location_id));
-  };
-
-  const sortedClients = [...clients].sort((a, b) => {
-    const aTasks = getClientTasks(a.id);
-    const bTasks = getClientTasks(b.id);
-    
-    const aTotal = aTasks.length;
-    const bTotal = bTasks.length;
-    
-    const aCompleted = aTasks.filter(t => t.status === 'COMPLETED').length;
-    const bCompleted = bTasks.filter(t => t.status === 'COMPLETED').length;
-    
-    // Sort logic: 
-    // 1. Projects with 100% completion (and at least one task) at the top.
-    // 2. Then projects by completion percentage descending.
-    // 3. Fallback to name.
-    
-    const aPct = aTotal > 0 ? aCompleted / aTotal : 0;
-    const bPct = bTotal > 0 ? bCompleted / bTotal : 0;
-    
-    if (aPct !== bPct) {
-      return bPct - aPct;
-    }
-    
-    return a.name.localeCompare(b.name);
-  });
-
-  const filteredClients = sortedClients.filter(c => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
+    if (!q) return sorted;
 
     if (q.includes('=')) {
-      const parts = q.split('=');
-      if (parts.length >= 2) {
-        const key = parts[0].trim();
-        const value = parts.slice(1).join('=').trim();
-        
-        switch (key) {
-          case 'tag':
-            return c.tags && c.tags.toLowerCase().includes(value);
-          case 'db':
-            return (c.database_type && c.database_type.toLowerCase().includes(value)) || 
-                   (c.database_version && c.database_version.toLowerCase().includes(value));
-          case 'name':
-            return c.name.toLowerCase().includes(value);
-          case 'status':
-            return c.status && c.status.toLowerCase().includes(value);
+      const [key, ...rest] = q.split('=');
+      const val = rest.join('=').trim();
+      return sorted.filter((c) => {
+        switch (key.trim()) {
+          case 'tag': return c.tags?.toLowerCase().includes(val) ?? false;
+          case 'db': return (c.database_type?.toLowerCase().includes(val) ?? false) || (c.database_version?.toLowerCase().includes(val) ?? false);
+          case 'name': return c.name.toLowerCase().includes(val);
+          default: return true;
         }
-      }
+      });
     }
 
-    return (
+    return sorted.filter((c) =>
       c.name.toLowerCase().includes(q) ||
-      (c.database_type && c.database_type.toLowerCase().includes(q)) ||
-      (c.database_version && c.database_version.toLowerCase().includes(q)) ||
-      (c.remarks && c.remarks.toLowerCase().includes(q)) ||
-      (c.tags && c.tags.toLowerCase().includes(q))     
+      (c.database_type?.toLowerCase().includes(q) ?? false) ||
+      (c.database_version?.toLowerCase().includes(q) ?? false) ||
+      (c.remarks?.toLowerCase().includes(q) ?? false) ||
+      (c.tags?.toLowerCase().includes(q) ?? false),
     );
-  });
+  }, [clients, debouncedSearch, getClientTasks]);
 
+  const getUserName = (id: number): string => users.find((u) => u.id === id)?.name ?? String(id);
+
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
   const handleClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       if (clientCreationMode === 'new') {
-        const clientData = { ...clientFormData };
-        const locationName = clientData.location_name;
-        delete (clientData as any).location_name;
-        delete (clientData as any).existing_client_id;
-        
-        const newClient = await api.post('/clients/', clientData);
-        await api.post('/locations/', { name: locationName || 'Main Office', client_id: newClient.data.id, hostname: '' });
-        showNotification("Client and Default Location created successfully!", "success");
+        const { location_name, existing_client_id: _eid, ...clientData } = clientFormData;
+        const newClient = await api.post<Client>('/clients/', clientData);
+        await api.post('/locations/', { name: location_name || 'Main Office', client_id: newClient.data.id, hostname: '' });
+        showNotification('Client and location created!', 'success');
       } else {
-        if (!clientFormData.existing_client_id) {
-          showNotification("Please select an existing client", "error");
-          return;
-        }
+        if (!clientFormData.existing_client_id) { showNotification('Please select a client', 'error'); return; }
         await api.post('/locations/', { name: clientFormData.location_name || 'Branch Office', client_id: parseInt(clientFormData.existing_client_id), hostname: '' });
-        showNotification("New Location added to existing client successfully!", "success");
+        showNotification('Location added to client!', 'success');
       }
-      
       setIsClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '', location_name: '', existing_client_id: '' });
+      setClientFormData(EMPTY_CLIENT_FORM);
       fetchData();
-    } catch (err) {
-      console.error(err);
-      showNotification("Failed to save. Check inputs.", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
   };
 
-  const openEditClient = (client: any) => {
+  const openEditClient = (client: Client) => {
     setSelectedClient(client);
-    const clientLocs = locations.filter(l => l.client_id === client.id);
-    const defaultLoc = clientLocs.length > 0 ? clientLocs[0] : null;
-
+    const defaultLoc = locations.find((l) => l.client_id === client.id);
     setClientFormData({
-      name: client.name || '',
-      database_type: client.database_type || 'MS SQL',
-      database_version: client.database_version || '',
-      zone: client.zone || '',
-      client_location: client.client_location || '',
-      poc_1: client.poc_1 || '',
-      poc_2: client.poc_2 || '',
-      license_uat: client.license_uat || '',
-      license_prod: client.license_prod || '',
-      uat_version: client.uat_version || '',
-      prod_version: client.prod_version || '',
-      remarks: client.remarks || '',
-      tags: client.tags || '',
-      location_name: defaultLoc ? defaultLoc.name : '',
-      existing_client_id: defaultLoc ? defaultLoc.id.toString() : ''
+      name: client.name, database_type: client.database_type ?? 'MS SQL',
+      database_version: client.database_version ?? '', remarks: client.remarks ?? '',
+      tags: client.tags ?? '', location_name: defaultLoc?.name ?? '',
+      existing_client_id: defaultLoc?.id.toString() ?? '',
     });
     setIsEditClientModalOpen(true);
   };
 
   const handleEditClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedClient) return;
     setIsSubmitting(true);
     try {
-      const clientData = { ...clientFormData };
-      const locationName = clientData.location_name;
-      const locationId = clientData.existing_client_id;
-      delete (clientData as any).location_name;
-      delete (clientData as any).existing_client_id;
-
+      const { location_name, existing_client_id: locationId, ...clientData } = clientFormData;
       await api.patch(`/clients/${selectedClient.id}`, clientData);
-      
-      if (locationId && locationName) {
-        await api.patch(`/locations/${locationId}`, { name: locationName });
-      } else if (!locationId && locationName) {
-        await api.post('/locations/', { name: locationName, client_id: selectedClient.id, hostname: '' });
+      if (locationId && location_name) {
+        await api.patch(`/locations/${locationId}`, { name: location_name });
+      } else if (!locationId && location_name) {
+        await api.post('/locations/', { name: location_name, client_id: selectedClient.id, hostname: '' });
       }
-
       setIsEditClientModalOpen(false);
-      setClientFormData({ name: '', database_type: 'MS SQL', database_version: '', zone: '', client_location: '', poc_1: '', poc_2: '', license_uat: '', license_prod: '', uat_version: '', prod_version: '', remarks: '', tags: '', location_name: '', existing_client_id: '' });
-      showNotification("Client updated successfully!", "success");
+      setClientFormData(EMPTY_CLIENT_FORM);
+      showNotification('Client updated!', 'success');
       fetchData();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
   };
 
   const openCreateTask = (clientId: number, locationId?: string) => {
-    setCreateTaskFormData({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: clientId, location_id: locationId || '' });
+    setCreateTaskFormData({ name: '', due_date: '', build_version: '', remarks: '', assigned_to: '', client_id: clientId, location_id: locationId ?? '' });
     setIsCreateTaskModalOpen(true);
   };
 
@@ -295,637 +239,475 @@ const Clients: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      let locationId = createTaskFormData.location_id ? parseInt(createTaskFormData.location_id) : undefined;
-      
+      let locationId = createTaskFormData.location_id ? parseInt(createTaskFormData.location_id) : 0;
       if (!locationId) {
-        const clientLocation = locations.find(l => l.client_id === createTaskFormData.client_id);
-        if (clientLocation) {
-          locationId = clientLocation.id;
-        } else {
-          const newLoc = await api.post('/locations/', { name: 'Main Office', client_id: createTaskFormData.client_id, hostname: '' });
+        const existing = locations.find((l) => l.client_id === createTaskFormData.client_id);
+        if (existing) { locationId = existing.id; }
+        else {
+          const newLoc = await api.post<Location>('/locations/', { name: 'Main Office', client_id: createTaskFormData.client_id, hostname: '' });
           locationId = newLoc.data.id;
         }
       }
-
-      const newTask = await api.post('/tasks/', {
-        name: createTaskFormData.name,
-        due_date: createTaskFormData.due_date,
+      const newTask = await api.post<Task>('/tasks/', {
+        name: createTaskFormData.name, due_date: createTaskFormData.due_date,
         build_version: createTaskFormData.build_version || null,
-        remarks: createTaskFormData.remarks || null,
-        location_id: locationId
+        remarks: createTaskFormData.remarks || null, location_id: locationId,
       });
-
       if (createTaskFormData.assigned_to) {
         await api.patch(`/tasks/${newTask.data.id}/assign`, { assigned_to: parseInt(createTaskFormData.assigned_to) });
       }
-
       setIsCreateTaskModalOpen(false);
-      showNotification("Task created successfully!", "success");
+      showNotification('Task created!', 'success');
       fetchData();
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
   };
 
-  const openTaskEdit = (task: any) => {
+  const openTaskEdit = (task: Task) => {
     setSelectedTask(task);
-    setEditTaskFormData({ 
-      status: task.status, 
-      assigned_to: task.assigned_to ? task.assigned_to.toString() : '',
-      build_version: task.build_version || '',
-      remarks: task.remarks || ''
+    setEditTaskFormData({
+      status: task.status, assigned_to: task.assigned_to?.toString() ?? '',
+      build_version: task.build_version ?? '', remarks: task.remarks ?? '',
     });
     setIsEditTaskModalOpen(true);
   };
 
   const handleEditTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedTask) return;
     setIsSubmitting(true);
     try {
-      if (editTaskFormData.build_version !== (selectedTask.build_version || '') || editTaskFormData.remarks !== (selectedTask.remarks || '')) {
-        await api.patch(`/tasks/${selectedTask.id}`, { 
-          build_version: editTaskFormData.build_version,
-          remarks: editTaskFormData.remarks
-        });
+      if (editTaskFormData.build_version !== (selectedTask.build_version ?? '') || editTaskFormData.remarks !== (selectedTask.remarks ?? '')) {
+        await api.patch(`/tasks/${selectedTask.id}`, { build_version: editTaskFormData.build_version || null, remarks: editTaskFormData.remarks || null });
       }
       if (editTaskFormData.status !== selectedTask.status) {
         await api.patch(`/tasks/${selectedTask.id}/status`, { status: editTaskFormData.status });
       }
-      if (editTaskFormData.assigned_to !== (selectedTask.assigned_to?.toString() || '') && currentUser?.role !== 'ENGINEER') {
-        await api.patch(`/tasks/${selectedTask.id}/assign`, { 
-          assigned_to: editTaskFormData.assigned_to ? parseInt(editTaskFormData.assigned_to) : null 
-        });
+      if (editTaskFormData.assigned_to !== (selectedTask.assigned_to?.toString() ?? '') && currentUser?.role !== 'ENGINEER') {
+        await api.patch(`/tasks/${selectedTask.id}/assign`, { assigned_to: editTaskFormData.assigned_to ? parseInt(editTaskFormData.assigned_to) : null });
       }
       setIsEditTaskModalOpen(false);
-      showNotification("Task updated successfully!", "success");
+      showNotification('Task updated!', 'success');
       fetchData();
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
   };
 
-  const getUserName = (id: number) => {
-    return users.find(u => u.id === id)?.name || id;
+  const openComments = (task: Task) => {
+    setSelectedTask(task);
+    fetchComments(task.id);
+    setIsCommentsModalOpen(true);
   };
 
-  const openExportModal = (clientId: number | null = null) => {
-    console.log("Opening Export Modal for client:", clientId);
-    setExportClientId(clientId);
-    setIsExportModalOpen(true);
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim() || !selectedTask) return;
+    try {
+      await api.post('/comments/', { task_id: selectedTask.id, content: newComment, parent_id: replyTo });
+      setNewComment(''); setReplyTo(null);
+      showNotification('Comment added!', 'success');
+      fetchComments(selectedTask.id);
+    } catch { /* handled */ }
+  };
+
+  const handleDeleteComment = async (id: number) => {
+    if (!selectedTask) return;
+    if (!window.confirm('Delete this comment?')) return;
+    try {
+      await api.delete(`/comments/${id}`);
+      showNotification('Comment deleted', 'info');
+      fetchComments(selectedTask.id);
+    } catch { /* handled */ }
   };
 
   const handleExportCSV = () => {
-    try {
-      const headers = [];
-    if (exportOptions.clientName) headers.push("Client Name");
-    if (exportOptions.clientLocation) headers.push("Client City");
-    if (exportOptions.databaseType) headers.push("Database Type");
-    if (exportOptions.databaseVersion) headers.push("Database Version");
-    if (exportOptions.clientTags) headers.push("Tags");
-    if (exportOptions.clientRemarks) headers.push("Client Remarks");
-    if (exportOptions.trackingLocation) headers.push("Tracking Location");
-    if (exportOptions.taskName) headers.push("Tracking Phase");
-    if (exportOptions.taskBuildVersion) headers.push("Build Version");
-    if (exportOptions.taskDueDate) headers.push("Due Date");
-    if (exportOptions.taskPOC) headers.push("Point of Contact");
-    if (exportOptions.taskStatus) headers.push("Status");
-    if (exportOptions.taskRemarks) headers.push("Task Remarks");
-    
-    const csvRows = [];
-    csvRows.push(headers.join(","));
+    const headers: string[] = [];
+    if (exportOptions.clientName) headers.push('Client Name');
+    if (exportOptions.clientLocation) headers.push('Client City');
+    if (exportOptions.databaseType) headers.push('Database Type');
+    if (exportOptions.databaseVersion) headers.push('Database Version');
+    if (exportOptions.clientTags) headers.push('Tags');
+    if (exportOptions.clientRemarks) headers.push('Client Remarks');
+    if (exportOptions.trackingLocation) headers.push('Tracking Location');
+    if (exportOptions.taskName) headers.push('Tracking Phase');
+    if (exportOptions.taskBuildVersion) headers.push('Build Version');
+    if (exportOptions.taskDueDate) headers.push('Due Date');
+    if (exportOptions.taskPOC) headers.push('Point of Contact');
+    if (exportOptions.taskStatus) headers.push('Status');
+    if (exportOptions.taskRemarks) headers.push('Task Remarks');
 
-    const clientsToExport = exportClientId 
-      ? clients.filter(c => c.id === exportClientId)
-      : filteredClients;
+    const rows: string[] = [headers.join(',')];
+    const clientsToExport = exportClientId ? clients.filter((c) => c.id === exportClientId) : filteredClients;
 
-    const escapeCsv = (val: any) => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
-      return `"${str}"`;
-    };
-
-    clientsToExport.forEach(c => {
+    clientsToExport.forEach((c) => {
       const clientTasks = getClientTasks(c.id);
+      const baseRow = () => {
+        const r: string[] = [];
+        if (exportOptions.clientName) r.push(esc(c.name));
+        if (exportOptions.clientLocation) r.push(esc(null));
+        if (exportOptions.databaseType) r.push(esc(c.database_type));
+        if (exportOptions.databaseVersion) r.push(esc(c.database_version));
+        if (exportOptions.clientTags) r.push(esc(c.tags));
+        if (exportOptions.clientRemarks) r.push(esc(c.remarks));
+        return r;
+      };
       if (clientTasks.length === 0) {
-        const row = [];
-        if (exportOptions.clientName) row.push(escapeCsv(c.name));
-        if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
-        if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
-        if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
-        if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
-        if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-        if (exportOptions.trackingLocation) row.push('""');
-        if (exportOptions.taskName) row.push('""');
-        if (exportOptions.taskBuildVersion) row.push('""');
-        if (exportOptions.taskDueDate) row.push('""');
-        if (exportOptions.taskPOC) row.push('""');
-        if (exportOptions.taskStatus) row.push('""');
-        if (exportOptions.taskRemarks) row.push('""');
-        csvRows.push(row.join(","));
+        const r = baseRow();
+        if (exportOptions.trackingLocation) r.push('""');
+        if (exportOptions.taskName) r.push('""');
+        if (exportOptions.taskBuildVersion) r.push('""');
+        if (exportOptions.taskDueDate) r.push('""');
+        if (exportOptions.taskPOC) r.push('""');
+        if (exportOptions.taskStatus) r.push('""');
+        if (exportOptions.taskRemarks) r.push('""');
+        rows.push(r.join(','));
       } else {
-        clientTasks.forEach(t => {
-          const row = [];
-          if (exportOptions.clientName) row.push(escapeCsv(c.name));
-          if (exportOptions.clientLocation) row.push(escapeCsv(c.client_location));
-          if (exportOptions.databaseType) row.push(escapeCsv(c.database_type));
-          if (exportOptions.databaseVersion) row.push(escapeCsv(c.database_version));
-          if (exportOptions.clientTags) row.push(escapeCsv(c.tags));
-          if (exportOptions.clientRemarks) row.push(escapeCsv(c.remarks));
-          
+        clientTasks.forEach((t) => {
+          const r = baseRow();
           if (exportOptions.trackingLocation) {
-            const taskLoc = locations.find(l => l.id === t.location_id);
-            row.push(escapeCsv(taskLoc ? `${taskLoc.name} ${taskLoc.hostname ? `(${taskLoc.hostname})` : ''}`.trim() : ''));
+            const loc = locations.find((l) => l.id === t.location_id);
+            r.push(esc(loc ? `${loc.name}${loc.hostname ? ` (${loc.hostname})` : ''}` : ''));
           }
-          
-          if (exportOptions.taskName) row.push(escapeCsv(t.name));
-          if (exportOptions.taskBuildVersion) row.push(escapeCsv(t.build_version));
-          if (exportOptions.taskDueDate) row.push(escapeCsv(t.due_date));
-          if (exportOptions.taskPOC) row.push(escapeCsv(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
-          if (exportOptions.taskStatus) row.push(escapeCsv(t.status));
-          if (exportOptions.taskRemarks) row.push(escapeCsv(t.remarks));
-          csvRows.push(row.join(","));
+          if (exportOptions.taskName) r.push(esc(t.name));
+          if (exportOptions.taskBuildVersion) r.push(esc(t.build_version));
+          if (exportOptions.taskDueDate) r.push(esc(t.due_date));
+          if (exportOptions.taskPOC) r.push(esc(t.assigned_to ? getUserName(t.assigned_to) : 'Unassigned'));
+          if (exportOptions.taskStatus) r.push(esc(t.status));
+          if (exportOptions.taskRemarks) r.push(esc(t.remarks));
+          rows.push(r.join(','));
         });
       }
     });
 
-      const csvString = csvRows.join("\n");
-      const blob = new Blob(["\ufeff", csvString], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = exportClientId ? `cdms_export_client_${exportClientId}.csv` : "cdms_full_export.csv";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      setIsExportModalOpen(false);
-      showNotification("CSV exported successfully!", "success");
-    } catch (error) {
-      console.error("Export failed", error);
-    }
+    const blob = new Blob(['\ufeff', rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = exportClientId ? `cdms_client_${exportClientId}.csv` : 'cdms_full_export.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    setIsExportModalOpen(false);
+    showNotification('CSV exported!', 'success');
   };
 
+  // ---------------------------------------------------------------------------
+  // Sub-components
+  // ---------------------------------------------------------------------------
+  const TasksTable = ({ locTasks }: { locTasks: Task[] }) => (
+    <div className="overflow-x-auto">
+      <table className="table text-xs">
+        <thead>
+          <tr>
+            <th scope="col">Tracking Phase</th>
+            <th scope="col">Build Version</th>
+            <th scope="col">Due Date</th>
+            <th scope="col">Point of Contact</th>
+            <th scope="col">Status</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {locTasks.map((t) => (
+            <tr key={t.id}>
+              <td className="font-medium text-gray-900">{t.name}</td>
+              <td>
+                {t.build_version
+                  ? <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">{t.build_version}</code>
+                  : <span className="text-gray-400">—</span>}
+              </td>
+              <td className="text-gray-500">{t.due_date}</td>
+              <td className="text-gray-500">
+                {t.assigned_to ? getUserName(t.assigned_to) : <span className="italic text-gray-400">Unassigned</span>}
+              </td>
+              <td><span className={STATUS_BADGE[t.status]}>{t.status.replace('_', ' ')}</span></td>
+              <td>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openComments(t)} className="btn-ghost text-gray-500 hover:text-blue-600" aria-label={`Comments for ${t.name}`} title="View discussion">
+                    <MessageSquare size={14} />
+                  </button>
+                  <button onClick={() => openTaskEdit(t)} className="btn-ghost text-blue-600 hover:bg-blue-50" aria-label={`Edit task ${t.name}`}>
+                    <Edit2 size={14} /> Edit
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
-    <div style={{ position: 'relative', width: '100%', minHeight: '100%' }}>
-      {/* Header with Search and Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#111827', margin: 0 }}>Installation Tracker</h1>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', position: 'relative', zIndex: 10 }}>
-          <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
-              placeholder="Search by Client, DB, Remarks..." 
+    <div>
+      {/* Header */}
+      <div className="page-header flex-wrap gap-3">
+        <div>
+          <h1 className="page-title">Installation Tracker</h1>
+          <p className="page-subtitle">Manage clients, locations, and tracking phases</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search */}
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="Search clients…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', minWidth: '250px', background: 'white' }}
+              className="input pl-9 pr-9 w-64"
+              aria-label="Search clients"
             />
             <button
               type="button"
               onMouseEnter={() => setShowSearchInfo(true)}
               onMouseLeave={() => setShowSearchInfo(false)}
-              style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#6b7280', cursor: 'help', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              onFocus={() => setShowSearchInfo(true)}
+              onBlur={() => setShowSearchInfo(false)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label="Search filter help"
             >
-              <Info size={16} />
+              <Info size={14} />
             </button>
             {showSearchInfo && (
-              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '0.5rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', padding: '1rem', width: '300px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', zIndex: 50, fontSize: '0.875rem', color: '#374151' }}>
-                <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#111827', fontWeight: 600 }}>Advanced Search Filters</h4>
-                <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <li><strong>tag=xyz</strong> (Searches only Tags, e.g., tag=vip)</li>
-                  <li><strong>db=xyz</strong> (Searches DB Type/Version, e.g., db=mysql)</li>
-                  <li><strong>name=xyz</strong> (Searches strictly by Client Name)</li>
-                  <li><strong>poc=xyz</strong> (Searches POC fields)</li>
-                  <li><strong>version=xyz</strong> (Searches UAT/Prod versions)</li>
+              <div className="absolute top-full right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-50 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900 mb-2">Advanced Search Filters</p>
+                <ul className="space-y-1.5 text-xs list-disc ml-4">
+                  <li><strong>tag=xyz</strong> — search by tag (e.g. tag=vip)</li>
+                  <li><strong>db=xyz</strong> — search by DB type/version</li>
+                  <li><strong>name=xyz</strong> — search strictly by name</li>
                 </ul>
               </div>
             )}
           </div>
-          <button 
-            type="button"
-            onClick={(e) => { e.preventDefault(); openExportModal(null); }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#111827', padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap', position: 'relative', zIndex: 11 }}
-          >
-            <Download size={16} /> Export
+          <button onClick={() => { setExportClientId(null); setIsExportModalOpen(true); }} className="btn-secondary">
+            <Download size={15} /> Export
           </button>
           {currentUser?.role !== 'ENGINEER' && (
-            <button 
-              type="button"
-              onClick={() => setIsClientModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
-            >
-              <Plus size={16} /> Add Client
+            <button onClick={() => { setClientCreationMode('new'); setClientFormData(EMPTY_CLIENT_FORM); setIsClientModalOpen(true); }} className="btn-primary">
+              <Plus size={15} /> Add Client
             </button>
           )}
         </div>
       </div>
-      
-      {/* Main Table */}
-      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-            <tr>
-              <th style={{ width: '40px' }}></th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500, width: '50px' }}>S.No</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Client Name</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Database</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tags</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Tasks Status</th>
-              <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500, textAlign: 'right' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredClients.map((c, index) => {
-              const clientTasks = getClientTasks(c.id);
-              const isExpanded = expandedClient === c.id;
-              const completedTasks = clientTasks.filter(t => t.status === 'COMPLETED').length;
-              
-              return (
-                <React.Fragment key={c.id}>
-                  <tr style={{ borderBottom: '1px solid #e5e7eb', background: isExpanded ? '#f9fafb' : 'white' }}>
-                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
-                      <button 
-                        type="button"
-                        onClick={() => setExpandedClient(isExpanded ? null : c.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}
-                      >
-                        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-                      </button>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280', fontWeight: 500 }}>
-                      {index + 1}
-                    </td>
-                    <td 
-                      onClick={() => setExpandedClient(isExpanded ? null : c.id)}
-                      style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500, color: '#111827', cursor: 'pointer' }}
-                      title="Click to view tracking phases"
-                    >
-                      {c.name}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
-                      {c.database_type ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ background: '#e5e7eb', padding: '0.125rem 0.5rem', borderRadius: '4px', width: 'fit-content' }}>{c.database_type}</span>
-                          {c.database_version && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>v{c.database_version}</span>}
-                        </div>
-                      ) : '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
-                      {c.tags ? (
-                        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                          {c.tags.split(',').map((tag: string, i: number) => (
-                            <span key={i} style={{ background: '#def7ec', color: '#03543f', padding: '0.125rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500 }}>
-                              {tag.trim()}
-                            </span>
-                          ))}
-                        </div>
-                      ) : '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.remarks}>
-                      {c.remarks || '-'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                      {clientTasks.length > 0 ? (
-                        <span style={{ color: completedTasks === clientTasks.length ? '#046c4e' : '#b45309', fontWeight: 500 }}>
-                          {completedTasks} / {clientTasks.length} Completed
-                        </span>
-                      ) : 'No Tasks'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openInfo(c); }}
-                        style={{ background: 'none', border: 'none', color: '#111827', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="View Details"
-                      >
-                        <Info size={16} />
-                      </button>
-                      {currentUser?.role !== 'ENGINEER' && (
-                        <button 
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openEditClient(c); }}
-                          style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="Edit Client"
+
+      {/* Table */}
+      {isLoading ? (
+        <TableSkeleton rows={6} cols={8} />
+      ) : (
+        <div className="table-wrapper">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col" className="w-10"></th>
+                <th scope="col" className="w-12">S.No</th>
+                <th scope="col">Client Name</th>
+                <th scope="col">Database</th>
+                <th scope="col">Tags</th>
+                <th scope="col">Remarks</th>
+                <th scope="col">Tasks Status</th>
+                <th scope="col" className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClients.map((c, index) => {
+                const clientTasks = getClientTasks(c.id);
+                const isExpanded = expandedClient === c.id;
+                const completedCount = clientTasks.filter((t) => t.status === 'COMPLETED').length;
+                const allDone = clientTasks.length > 0 && completedCount === clientTasks.length;
+
+                return (
+                  <React.Fragment key={c.id}>
+                    <tr className={isExpanded ? 'bg-gray-50' : ''}>
+                      <td className="text-center">
+                        <button
+                          onClick={() => setExpandedClient(isExpanded ? null : c.id)}
+                          className="btn-ghost p-1"
+                          aria-expanded={isExpanded}
+                          aria-label={isExpanded ? `Collapse ${c.name}` : `Expand ${c.name}`}
                         >
-                          <Edit2 size={16} />
+                          {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                         </button>
-                      )}
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openExportModal(c.id); }}
-                        style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="Export Client Data"
+                      </td>
+                      <td className="text-gray-400 font-medium">{index + 1}</td>
+                      <td
+                        className="font-semibold text-gray-900 cursor-pointer hover:text-blue-700"
+                        onClick={() => setExpandedClient(isExpanded ? null : c.id)}
+                        title="Click to view tracking phases"
                       >
-                        <Download size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                  
-                  {isExpanded && (
-                    <tr style={{ background: '#fcfcfd', borderBottom: '1px solid #e5e7eb' }}>
-                      <td colSpan={8} style={{ padding: '1.5rem 1rem' }}>
-                        {(() => {
-                          const clientLocs = locations.filter(l => l.client_id === c.id);
-                          const isSingleLocation = clientLocs.length === 1;
-
-                          const renderTasksTable = (locTasks: any[]) => (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                              <thead style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
-                                <tr>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Tracking Phase</th>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Build Version</th>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Due Date</th>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Point of Contact</th>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Status</th>
-                                  <th style={{ padding: '0.5rem 1rem', color: '#4b5563', fontSize: '0.75rem', fontWeight: 600 }}>Action</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {locTasks.map((t: any) => (
-                                  <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', fontWeight: 500, color: '#111827' }}>{t.name}</td>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
-                                      {t.build_version ? <span style={{ fontFamily: 'monospace', background: '#f3f4f6', padding: '0.125rem 0.25rem', borderRadius: '4px' }}>{t.build_version}</span> : '-'}
-                                    </td>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>{t.due_date}</td>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                                      {t.assigned_to ? getUserName(t.assigned_to) : <span style={{ fontStyle: 'italic' }}>Unassigned</span>}
-                                    </td>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
-                                      <span style={{ 
-                                        padding: '0.125rem 0.5rem', 
-                                        borderRadius: '4px', 
-                                        fontSize: '0.75rem', 
-                                        fontWeight: 600,
-                                        backgroundColor: t.status === 'COMPLETED' ? '#def7ec' : (t.status === 'IN_PROGRESS' ? '#e1effe' : (t.status === 'BLOCKED' ? '#fdf2f2' : '#f3f4f6')),
-                                        color: t.status === 'COMPLETED' ? '#03543f' : (t.status === 'IN_PROGRESS' ? '#1e429f' : (t.status === 'BLOCKED' ? '#9b1c1c' : '#374151'))
-                                      }}>
-                                        {t.status.replace('_', ' ')}
-                                      </span>
-                                    </td>
-                                    <td style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', display: 'flex', gap: '0.75rem' }}>
-                                      <button 
-                                        type="button"
-                                        onClick={() => openComments(t)}
-                                        style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                        title="View Discussion"
-                                      >
-                                        <MessageSquare size={14} />
-                                      </button>
-                                      <button 
-                                        type="button"
-                                        onClick={() => openTaskEdit(t)}
-                                        style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                      >
-                                        <Edit2 size={14} /> Edit
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          );
-
-                          return (
-                            <>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h3 style={{ margin: 0, fontSize: '1rem', color: '#111827', fontWeight: 600 }}>
-                                  {isSingleLocation ? 'Tracking Phases' : 'Locations & Tracking Phases'}
-                                </h3>
-                                {isSingleLocation && currentUser?.role !== 'ENGINEER' && (
-                                  <button 
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); openCreateTask(c.id, clientLocs[0].id.toString()); }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'white', color: '#1a56db', border: '1px solid #1a56db', padding: '0.375rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}
-                                  >
-                                    <Plus size={14} /> Add Phase
-                                  </button>
-                                )}
-                              </div>
-
-                              {isSingleLocation ? (
-                                <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-                                  {(() => {
-                                    const singleLocTasks = tasks.filter(t => t.location_id === clientLocs[0].id);
-                                    return singleLocTasks.length > 0 ? renderTasksTable(singleLocTasks) : (
-                                      <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
-                                        No tracking tasks have been added yet.
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              ) : clientLocs.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                  {clientLocs.map(loc => {
-                                    const locTasks = tasks.filter(t => t.location_id === loc.id);
-                                    const isLocExpanded = expandedLocation === loc.id;
-                                    
-                                    return (
-                                      <div key={loc.id} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden', background: 'white' }}>
-                                        <div 
-                                          onClick={() => setExpandedLocation(isLocExpanded ? null : loc.id)}
-                                          style={{ padding: '0.75rem 1rem', background: isLocExpanded ? '#f9fafb' : 'white', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: isLocExpanded ? '1px solid #e5e7eb' : 'none' }}
-                                        >
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            {isLocExpanded ? <ChevronDown size={16} color="#6b7280" /> : <ChevronRight size={16} color="#6b7280" />}
-                                            <span style={{ fontWeight: 600, color: '#111827', fontSize: '0.875rem' }}>{loc.name} {loc.hostname ? `(${loc.hostname})` : ''}</span>
-                                          </div>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>{locTasks.length} Phase{locTasks.length !== 1 ? 's' : ''}</span>
-                                            {currentUser?.role !== 'ENGINEER' && (
-                                              <button 
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); openCreateTask(c.id, loc.id.toString()); }}
-                                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: '#f3f4f6', color: '#1a56db', border: '1px solid #d1d5db', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-                                              >
-                                                <Plus size={12} /> Add Phase
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        
-                                        {isLocExpanded && (
-                                          <div style={{ padding: '1rem' }}>
-                                            {locTasks.length > 0 ? renderTasksTable(locTasks) : (
-                                              <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
-                                                No tracking tasks have been added for this location yet.
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.875rem', padding: '1rem' }}>
-                                  No tracking tasks or locations have been added for this client yet.
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
+                        {c.name}
+                      </td>
+                      <td>
+                        {c.database_type ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded font-medium">{c.database_type}</span>
+                            {c.database_version && <span className="text-xs text-gray-400">v{c.database_version}</span>}
+                          </div>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td>
+                        {c.tags ? (
+                          <div className="flex flex-wrap gap-1">
+                            {c.tags.split(',').map((tag, i) => (
+                              <span key={i} className="badge-green text-xs">{tag.trim()}</span>
+                            ))}
+                          </div>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="max-w-xs truncate text-gray-500" title={c.remarks ?? ''}>
+                        {c.remarks ?? '—'}
+                      </td>
+                      <td>
+                        {clientTasks.length > 0 ? (
+                          <span className={`font-semibold text-sm ${allDone ? 'text-emerald-700' : 'text-amber-700'}`}>
+                            {completedCount} / {clientTasks.length} Completed
+                          </span>
+                        ) : <span className="text-gray-400 text-sm">No Tasks</span>}
+                      </td>
+                      <td>
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => { setSelectedClient(c); setIsInfoModalOpen(true); }} className="btn-ghost" aria-label={`View details for ${c.name}`} title="View details">
+                            <Info size={15} />
+                          </button>
+                          {currentUser?.role !== 'ENGINEER' && (
+                            <button onClick={() => openEditClient(c)} className="btn-ghost text-blue-600 hover:bg-blue-50" aria-label={`Edit ${c.name}`} title="Edit client">
+                              <Edit2 size={15} />
+                            </button>
+                          )}
+                          <button onClick={() => { setExportClientId(c.id); setIsExportModalOpen(true); }} className="btn-ghost" aria-label={`Export ${c.name}`} title="Export client data">
+                            <Download size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-            {clients.length === 0 && (
-              <tr>
-                <td colSpan={8} style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280' }}>No clients found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
-      {/* --- ALL MODALS BELOW --- */}
+                    {/* Expanded row */}
+                    {isExpanded && (
+                      <tr className="bg-gray-50/50">
+                        <td colSpan={8} className="px-6 py-4">
+                          {(() => {
+                            const clientLocs = locations.filter((l) => l.client_id === c.id);
+                            const isSingle = clientLocs.length === 1;
 
-      {/* Client Create Modal */}
-      {isClientModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', borderBottom: '1px solid #e5e7eb' }}>
-              <button type="button" onClick={() => setClientCreationMode('new')} style={{ background: 'none', border: 'none', padding: '0.5rem 0', fontWeight: 600, color: clientCreationMode === 'new' ? '#1a56db' : '#6b7280', borderBottom: clientCreationMode === 'new' ? '2px solid #1a56db' : '2px solid transparent', cursor: 'pointer', marginBottom: '-1px' }}>Create New Company</button>
-              <button type="button" onClick={() => setClientCreationMode('existing')} style={{ background: 'none', border: 'none', padding: '0.5rem 0', fontWeight: 600, color: clientCreationMode === 'existing' ? '#1a56db' : '#6b7280', borderBottom: clientCreationMode === 'existing' ? '2px solid #1a56db' : '2px solid transparent', cursor: 'pointer', marginBottom: '-1px' }}>Add Location to Existing</button>
-            </div>
-            <form onSubmit={handleClientSubmit}>
-              {clientCreationMode === 'new' ? (
-                <>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
-                    <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                  </div>
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Default Location Name *</label>
-                    <input required type="text" placeholder="e.g. Main Office, HQ" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                  </div>
+                            return (
+                              <>
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="font-semibold text-gray-900 text-sm">
+                                    {isSingle ? 'Tracking Phases' : 'Locations & Tracking Phases'}
+                                  </h3>
+                                  {isSingle && currentUser?.role !== 'ENGINEER' && (
+                                    <button onClick={() => openCreateTask(c.id, clientLocs[0].id.toString())} className="btn-secondary text-xs py-1">
+                                      <Plus size={13} /> Add Phase
+                                    </button>
+                                  )}
+                                </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
-                      <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                        <option value="">-- None --</option>
-                        <option value="MS SQL">MS SQL</option>
-                        <option value="MySQL">MySQL</option>
-                        <option value="Oracle">Oracle</option>
-                        <option value="PostgreSQL">PostgreSQL</option>
-                        <option value="Other">Other</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
-                      <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                    </div>
-                  </div>
-
-                  
-
-                  
-
-                  
-
-                  <div style={{ marginBottom: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
-                    <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                  </div>
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
-                    <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ marginBottom: '1rem', position: 'relative' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Select Company *</label>
-                    <div style={{ position: 'relative' }}>
-                      <input 
-                        required={!clientFormData.existing_client_id}
-                        type="text" 
-                        placeholder="Search and select company..." 
-                        value={companySearchQuery} 
-                        onChange={e => {
-                          setCompanySearchQuery(e.target.value);
-                          setClientFormData({...clientFormData, existing_client_id: ''});
-                          setIsCompanyDropdownOpen(true);
-                        }}
-                        onFocus={() => setIsCompanyDropdownOpen(true)}
-                        onBlur={() => setTimeout(() => setIsCompanyDropdownOpen(false), 200)}
-                        style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', outline: 'none' }} 
-                      />
-                      {isCompanyDropdownOpen && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid #d1d5db', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto', zIndex: 10, marginTop: '4px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                          {clients.filter(c => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).length > 0 ? (
-                            clients.filter(c => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).map(c => (
-                              <div 
-                                key={c.id} 
-                                onClick={() => {
-                                  setClientFormData({...clientFormData, existing_client_id: c.id.toString()});
-                                  setCompanySearchQuery(c.name);
-                                  setIsCompanyDropdownOpen(false);
-                                }}
-                                style={{ padding: '0.5rem 1rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontSize: '0.875rem' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                              >
-                                {c.name}
-                              </div>
-                            ))
-                          ) : (
-                            <div style={{ padding: '0.5rem 1rem', color: '#6b7280', fontSize: '0.875rem' }}>No companies found</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>New Location Name *</label>
-                    <input required type="text" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} placeholder="e.g. Branch Office, HQ" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                  </div>
-                </>
+                                {isSingle ? (
+                                  <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                    {(() => {
+                                      const locTasks = tasks.filter((t) => t.location_id === clientLocs[0].id);
+                                      return locTasks.length > 0
+                                        ? <TasksTable locTasks={locTasks} />
+                                        : <p className="text-center text-gray-400 text-sm py-4">No tracking phases added yet.</p>;
+                                    })()}
+                                  </div>
+                                ) : clientLocs.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {clientLocs.map((loc) => {
+                                      const locTasks = tasks.filter((t) => t.location_id === loc.id);
+                                      const isLocExpanded = expandedLocation === loc.id;
+                                      return (
+                                        <div key={loc.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                          <div
+                                            className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-gray-50"
+                                            onClick={() => setExpandedLocation(isLocExpanded ? null : loc.id)}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              {isLocExpanded ? <ChevronDown size={15} className="text-gray-400" /> : <ChevronRight size={15} className="text-gray-400" />}
+                                              <span className="font-semibold text-sm text-gray-900">{loc.name}{loc.hostname ? ` (${loc.hostname})` : ''}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                              <span className="text-xs text-gray-400">{locTasks.length} phase{locTasks.length !== 1 ? 's' : ''}</span>
+                                              {currentUser?.role !== 'ENGINEER' && (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); openCreateTask(c.id, loc.id.toString()); }}
+                                                  className="btn-secondary text-xs py-0.5 px-2"
+                                                  aria-label={`Add phase to ${loc.name}`}
+                                                >
+                                                  <Plus size={12} /> Add Phase
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          {isLocExpanded && (
+                                            <div className="border-t border-gray-100">
+                                              {locTasks.length > 0
+                                                ? <TasksTable locTasks={locTasks} />
+                                                : <p className="text-center text-gray-400 text-sm py-4">No tracking phases for this location.</p>}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-center text-gray-400 text-sm py-4">No locations or tasks added yet.</p>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {filteredClients.length === 0 && (
+                <tr><td colSpan={8} className="text-center text-gray-400 py-10">No clients found.</td></tr>
               )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button type="button" onClick={() => setIsClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  {isSubmitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Client Edit Modal */}
-      {isEditClientModalOpen && selectedClient && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsEditClientModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Edit Client: {selectedClient.name}</h2>
-            <form onSubmit={handleEditClientSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Name *</label>
-                <input required type="text" value={clientFormData.name} onChange={e => setClientFormData({...clientFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Default Location Name</label>
-                <input type="text" value={clientFormData.location_name} onChange={e => setClientFormData({...clientFormData, location_name: e.target.value})} placeholder="e.g. Main Office, HQ" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-              </div>
+      {/* ---- MODALS ---- */}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Database Type</label>
-                  <select value={clientFormData.database_type} onChange={e => setClientFormData({...clientFormData, database_type: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- None --</option>
+      {/* Add Client Modal */}
+      <Modal isOpen={isClientModalOpen} onClose={() => setIsClientModalOpen(false)} title="Add Client / Location" maxWidth="max-w-lg"
+        footer={
+          <>
+            <button onClick={() => setIsClientModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="add-client-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Saving…' : 'Save'}
+            </button>
+          </>
+        }
+      >
+        {/* Tabs */}
+        <div className="flex gap-4 border-b border-gray-200 mb-5 -mt-2">
+          {(['new', 'existing'] as const).map((mode) => (
+            <button key={mode} type="button" onClick={() => setClientCreationMode(mode)}
+              className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${clientCreationMode === mode ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              {mode === 'new' ? 'Create New Company' : 'Add Location to Existing'}
+            </button>
+          ))}
+        </div>
+        <form id="add-client-form" onSubmit={handleClientSubmit} noValidate>
+          {clientCreationMode === 'new' ? (
+            <div className="space-y-4">
+              <div className="form-group">
+                <label htmlFor="ac-name" className="label">Client Name <span className="text-red-500">*</span></label>
+                <input id="ac-name" required type="text" value={clientFormData.name} onChange={(e) => setClientFormData({ ...clientFormData, name: e.target.value })} className="input" />
+              </div>
+              <div className="form-group">
+                <label htmlFor="ac-loc" className="label">Default Location Name <span className="text-red-500">*</span></label>
+                <input id="ac-loc" required type="text" placeholder="e.g. Main Office, HQ" value={clientFormData.location_name} onChange={(e) => setClientFormData({ ...clientFormData, location_name: e.target.value })} className="input" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label htmlFor="ac-dbtype" className="label">Database Type</label>
+                  <select id="ac-dbtype" value={clientFormData.database_type} onChange={(e) => setClientFormData({ ...clientFormData, database_type: e.target.value })} className="input">
+                    <option value="">— None —</option>
                     <option value="MS SQL">MS SQL</option>
                     <option value="MySQL">MySQL</option>
                     <option value="Oracle">Oracle</option>
@@ -933,315 +715,311 @@ const Clients: React.FC = () => {
                     <option value="Other">Other</option>
                   </select>
                 </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>DB Version</label>
-                  <input type="text" value={clientFormData.database_version} onChange={e => setClientFormData({...clientFormData, database_version: e.target.value})} placeholder="e.g. 2019" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+                <div className="form-group">
+                  <label htmlFor="ac-dbver" className="label">DB Version</label>
+                  <input id="ac-dbver" type="text" placeholder="e.g. 2019" value={clientFormData.database_version} onChange={(e) => setClientFormData({ ...clientFormData, database_version: e.target.value })} className="input" />
                 </div>
               </div>
-
-              
-
-              
-
-              
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags</label>
-                <input type="text" value={clientFormData.tags} onChange={e => setClientFormData({...clientFormData, tags: e.target.value})} placeholder="e.g. Urgent, VIP" style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+              <div className="form-group">
+                <label htmlFor="ac-tags" className="label">Tags</label>
+                <input id="ac-tags" type="text" placeholder="e.g. Urgent, VIP" value={clientFormData.tags} onChange={(e) => setClientFormData({ ...clientFormData, tags: e.target.value })} className="input" />
               </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Remarks</label>
-                <textarea rows={3} value={clientFormData.remarks} onChange={e => setClientFormData({...clientFormData, remarks: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }}></textarea>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button type="button" onClick={() => setIsEditClientModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  {isSubmitting ? 'Updating...' : 'Update Client'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Client Info Modal */}
-      {isInfoModalOpen && selectedClient && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '700px', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsInfoModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', color: '#111827', borderBottom: '2px solid #f3f4f6', paddingBottom: '0.75rem' }}>
-              Client Details: {selectedClient.name}
-            </h2>
-
-            <div style={{ marginTop: '1rem', paddingTop: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>Remarks</label>
-              <div style={{ fontSize: '0.875rem', color: '#4b5563', background: '#f9fafb', padding: '1rem', borderRadius: '6px', border: '1px solid #e5e7eb', minHeight: '60px' }}>
-                {selectedClient.remarks || 'No remarks provided.'}
+              <div className="form-group">
+                <label htmlFor="ac-remarks" className="label">Remarks</label>
+                <textarea id="ac-remarks" rows={3} value={clientFormData.remarks} onChange={(e) => setClientFormData({ ...clientFormData, remarks: e.target.value })} className="input resize-none" />
               </div>
             </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2rem' }}>
-              <button onClick={() => setIsInfoModalOpen(false)} style={{ padding: '0.5rem 1.5rem', background: '#111827', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Task Create Modal */}
-      {isCreateTaskModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsCreateTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Add Tracking Phase</h2>
-            <form onSubmit={handleCreateTaskSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Location *</label>
-                <select 
-                  required={locations.filter(l => l.client_id === createTaskFormData.client_id).length > 0} 
-                  value={createTaskFormData.location_id} 
-                  onChange={e => setCreateTaskFormData({...createTaskFormData, location_id: e.target.value})} 
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}
-                >
-                  <option value="">-- Select Location --</option>
-                  {locations.filter(l => l.client_id === createTaskFormData.client_id).map(l => (
-                    <option key={l.id} value={l.id}>{l.name} {l.hostname ? `(${l.hostname})` : ''}</option>
-                  ))}
-                </select>
-                {locations.filter(l => l.client_id === createTaskFormData.client_id).length === 0 && (
-                  <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>No locations found. A "Main Office" location will be created automatically.</p>
-                )}
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Phase Name *</label>
-                <input required type="text" value={createTaskFormData.name} onChange={e => setCreateTaskFormData({...createTaskFormData, name: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Due Date *</label>
-                  <input required type="date" value={createTaskFormData.due_date} onChange={e => setCreateTaskFormData({...createTaskFormData, due_date: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Build Version</label>
-                  <input type="text" value={createTaskFormData.build_version} onChange={e => setCreateTaskFormData({...createTaskFormData, build_version: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db' }} />
+          ) : (
+            <div className="space-y-4">
+              <div className="form-group">
+                <label htmlFor="ac-existing" className="label">Select Company <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <input id="ac-existing" type="text" placeholder="Search and select company…"
+                    value={companySearchQuery}
+                    onChange={(e) => { setCompanySearchQuery(e.target.value); setClientFormData({ ...clientFormData, existing_client_id: '' }); setIsCompanyDropdownOpen(true); }}
+                    onFocus={() => setIsCompanyDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setIsCompanyDropdownOpen(false), 200)}
+                    className="input" autoComplete="off" />
+                  {isCompanyDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50">
+                      {clients.filter((c) => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).length > 0
+                        ? clients.filter((c) => c.name.toLowerCase().includes(companySearchQuery.toLowerCase())).map((c) => (
+                          <button key={c.id} type="button"
+                            onClick={() => { setClientFormData({ ...clientFormData, existing_client_id: c.id.toString() }); setCompanySearchQuery(c.name); setIsCompanyDropdownOpen(false); }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                            {c.name}
+                          </button>
+                        ))
+                        : <p className="px-4 py-2 text-sm text-gray-400">No companies found</p>}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Point of Contact</label>
-                <select value={createTaskFormData.assigned_to} onChange={e => setCreateTaskFormData({...createTaskFormData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                  <option value="">-- Unassigned --</option>
-                  {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                  ))}
-                </select>
+              <div className="form-group">
+                <label htmlFor="ac-newloc" className="label">New Location Name <span className="text-red-500">*</span></label>
+                <input id="ac-newloc" required type="text" placeholder="e.g. Branch Office" value={clientFormData.location_name} onChange={(e) => setClientFormData({ ...clientFormData, location_name: e.target.value })} className="input" />
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button type="button" onClick={() => setIsCreateTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  {isSubmitting ? 'Saving...' : 'Add Phase'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Task Edit Modal */}
-      {isEditTaskModalOpen && selectedTask && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsEditTaskModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Update Tracking: {selectedTask.name}</h2>
-            <form onSubmit={handleEditTaskSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Status *</label>
-                  <select 
-                    required 
-                    disabled={currentUser?.role === 'ENGINEER'}
-                    value={editTaskFormData.status} 
-                    onChange={e => setEditTaskFormData({...editTaskFormData, status: e.target.value})} 
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: currentUser?.role === 'ENGINEER' ? '#f3f4f6' : 'white', cursor: currentUser?.role === 'ENGINEER' ? 'not-allowed' : 'pointer' }}
-                  >
-                    <option value="NOT_STARTED">Not Started / Pending</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="BLOCKED">Blocked</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Build Version</label>
-                  <input 
-                    type="text" 
-                    disabled={currentUser?.role === 'ENGINEER'}
-                    value={editTaskFormData.build_version} 
-                    onChange={e => setEditTaskFormData({...editTaskFormData, build_version: e.target.value})} 
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: currentUser?.role === 'ENGINEER' ? '#f3f4f6' : 'white', cursor: currentUser?.role === 'ENGINEER' ? 'not-allowed' : 'pointer' }} 
-                  />
-                </div>
-              </div>
-              {currentUser?.role !== 'ENGINEER' && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>Point of Contact</label>
-                  <select value={editTaskFormData.assigned_to} onChange={e => setEditTaskFormData({...editTaskFormData, assigned_to: e.target.value})} style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- Unassigned --</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button type="button" onClick={() => setIsEditTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" disabled={isSubmitting} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  {isSubmitting ? 'Saving...' : 'Update'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Export Modal */}
-      {isExportModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-            <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-              <X size={20} />
-            </button>
-            <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem' }}>Export Data to CSV</h2>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <p style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#6b7280' }}>Select the fields you want to include in the CSV export:</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                {Object.entries(exportOptions).map(([key, value]) => (
-                  <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={value as boolean} 
-                      onChange={(e) => setExportOptions({...exportOptions, [key as keyof typeof exportOptions]: e.target.checked})}
-                    />
-                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-              <button type="button" onClick={handleExportCSV} style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                Download CSV
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Discussion Modal */}
-      {isCommentsModalOpen && selectedTask && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ background: 'white', borderRadius: '8px', width: '100%', maxWidth: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Discussion</h2>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>Task: {selectedTask.name}</p>
-              </div>
-              <button type="button" onClick={() => setIsCommentsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
-                <X size={20} />
-              </button>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
-              {comments.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem 0' }}>
-                  No comments yet. Start the discussion!
-                </div>
-              ) : (
-                <CommentList 
-                  comments={comments} 
-                  onReply={(id) => setReplyTo(id)} 
-                  onDelete={handleDeleteComment} 
-                  currentUserId={currentUser?.id} 
-                />
-              )}
-            </div>
-            <div style={{ padding: '1.5rem', borderTop: '1px solid #e5e7eb', background: '#f9fafb' }}>
-              {replyTo && (
-                <div style={{ marginBottom: '0.5rem', fontSize: '0.75rem', color: '#1a56db', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Replying to a comment...</span>
-                  <button type="button" onClick={() => setReplyTo(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}>Cancel</button>
-                </div>
-              )}
-              <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
-                <textarea 
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Type your message..."
-                  style={{ flex: 1, padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1d5db', resize: 'none', fontSize: '0.875rem', background: 'white' }}
-                  rows={2}
-                />
-                <button 
-                  type="submit" 
-                  style={{ background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', padding: '0 1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Send size={18} />
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Sub-components for Comments ---
-const CommentList: React.FC<{ 
-  comments: any[], 
-  onReply: (id: number) => void, 
-  onDelete: (id: number) => void,
-  currentUserId: number | undefined
-}> = ({ comments, onReply, onDelete, currentUserId }) => {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {comments.map(c => (
-        <div key={c.id} style={{ borderLeft: c.parent_id ? '2px solid #e5e7eb' : 'none', paddingLeft: c.parent_id ? '1rem' : '0' }}>
-          <div style={{ background: '#f9fafb', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-              <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#111827' }}>{c.user?.name || 'System'}</span>
-              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{new Date(c.timestamp).toLocaleString()}</span>
-            </div>
-            <div style={{ fontSize: '0.875rem', color: '#374151', marginBottom: '0.5rem' }}>{c.content}</div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button 
-                type="button"
-                onClick={() => onReply(c.id)}
-                style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 }}
-              >
-                <Reply size={12} /> Reply
-              </button>
-              {(currentUserId === c.user_id) && (
-                <button 
-                  type="button"
-                  onClick={() => onDelete(c.id)}
-                  style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 }}
-                >
-                  <Trash size={12} /> Delete
-                </button>
-              )}
-            </div>
-          </div>
-          {c.replies && c.replies.length > 0 && (
-            <div style={{ marginTop: '1rem' }}>
-              <CommentList comments={c.replies} onReply={onReply} onDelete={onDelete} currentUserId={currentUserId} />
             </div>
           )}
+        </form>
+      </Modal>
+
+      {/* Edit Client Modal */}
+      <Modal isOpen={isEditClientModalOpen} onClose={() => setIsEditClientModalOpen(false)} title={`Edit Client: ${selectedClient?.name ?? ''}`} maxWidth="max-w-lg"
+        footer={
+          <>
+            <button onClick={() => setIsEditClientModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="edit-client-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Updating…' : 'Update Client'}
+            </button>
+          </>
+        }
+      >
+        <form id="edit-client-form" onSubmit={handleEditClientSubmit} noValidate>
+          <div className="space-y-4">
+            <div className="form-group">
+              <label htmlFor="ec-name" className="label">Client Name <span className="text-red-500">*</span></label>
+              <input id="ec-name" required type="text" value={clientFormData.name} onChange={(e) => setClientFormData({ ...clientFormData, name: e.target.value })} className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="ec-loc" className="label">Default Location Name</label>
+              <input id="ec-loc" type="text" value={clientFormData.location_name} onChange={(e) => setClientFormData({ ...clientFormData, location_name: e.target.value })} className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="form-group">
+                <label htmlFor="ec-dbtype" className="label">Database Type</label>
+                <select id="ec-dbtype" value={clientFormData.database_type} onChange={(e) => setClientFormData({ ...clientFormData, database_type: e.target.value })} className="input">
+                  <option value="">— None —</option>
+                  <option value="MS SQL">MS SQL</option>
+                  <option value="MySQL">MySQL</option>
+                  <option value="Oracle">Oracle</option>
+                  <option value="PostgreSQL">PostgreSQL</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="ec-dbver" className="label">DB Version</label>
+                <input id="ec-dbver" type="text" value={clientFormData.database_version} onChange={(e) => setClientFormData({ ...clientFormData, database_version: e.target.value })} className="input" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="ec-tags" className="label">Tags</label>
+              <input id="ec-tags" type="text" value={clientFormData.tags} onChange={(e) => setClientFormData({ ...clientFormData, tags: e.target.value })} className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="ec-remarks" className="label">Remarks</label>
+              <textarea id="ec-remarks" rows={3} value={clientFormData.remarks} onChange={(e) => setClientFormData({ ...clientFormData, remarks: e.target.value })} className="input resize-none" />
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Client Info Modal */}
+      <Modal isOpen={isInfoModalOpen} onClose={() => setIsInfoModalOpen(false)} title={`Client Details: ${selectedClient?.name ?? ''}`} maxWidth="max-w-lg"
+        footer={<button onClick={() => setIsInfoModalOpen(false)} className="btn-dark">Close</button>}
+      >
+        {selectedClient && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><p className="label">Database Type</p><p className="text-gray-700">{selectedClient.database_type ?? '—'}</p></div>
+              <div><p className="label">DB Version</p><p className="text-gray-700">{selectedClient.database_version ?? '—'}</p></div>
+              <div><p className="label">Tags</p><p className="text-gray-700">{selectedClient.tags ?? '—'}</p></div>
+            </div>
+            <div>
+              <p className="label">Remarks</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-700 min-h-[60px]">
+                {selectedClient.remarks ?? 'No remarks provided.'}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Create Task Modal */}
+      <Modal isOpen={isCreateTaskModalOpen} onClose={() => setIsCreateTaskModalOpen(false)} title="Add Tracking Phase"
+        footer={
+          <>
+            <button onClick={() => setIsCreateTaskModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="create-task-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Saving…' : 'Create Phase'}
+            </button>
+          </>
+        }
+      >
+        <form id="create-task-form" onSubmit={handleCreateTaskSubmit} noValidate>
+          <div className="space-y-4">
+            <div className="form-group">
+              <label htmlFor="ct-loc" className="label">Location</label>
+              <select id="ct-loc" value={createTaskFormData.location_id} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, location_id: e.target.value })} className="input">
+                <option value="">— Select Location —</option>
+                {locations.filter((l) => l.client_id === createTaskFormData.client_id).map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}{l.hostname ? ` (${l.hostname})` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="ct-name" className="label">Phase Name <span className="text-red-500">*</span></label>
+              <input id="ct-name" required type="text" value={createTaskFormData.name} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, name: e.target.value })} className="input" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="form-group">
+                <label htmlFor="ct-due" className="label">Due Date <span className="text-red-500">*</span></label>
+                <input id="ct-due" required type="date" value={createTaskFormData.due_date} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, due_date: e.target.value })} className="input" />
+              </div>
+              <div className="form-group">
+                <label htmlFor="ct-build" className="label">Build Version</label>
+                <input id="ct-build" type="text" value={createTaskFormData.build_version} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, build_version: e.target.value })} className="input" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="ct-poc" className="label">Assign To</label>
+              <select id="ct-poc" value={createTaskFormData.assigned_to} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, assigned_to: e.target.value })} className="input">
+                <option value="">— Unassigned —</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="ct-remarks" className="label">Remarks</label>
+              <textarea id="ct-remarks" rows={2} value={createTaskFormData.remarks} onChange={(e) => setCreateTaskFormData({ ...createTaskFormData, remarks: e.target.value })} className="input resize-none" />
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Task Modal */}
+      <Modal isOpen={isEditTaskModalOpen} onClose={() => setIsEditTaskModalOpen(false)} title={`Edit Phase: ${selectedTask?.name ?? ''}`}
+        footer={
+          <>
+            <button onClick={() => setIsEditTaskModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="edit-task-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Saving…' : 'Update Phase'}
+            </button>
+          </>
+        }
+      >
+        <form id="edit-task-form" onSubmit={handleEditTaskSubmit} noValidate>
+          <div className="space-y-4">
+            <div className="form-group">
+              <label htmlFor="et-status" className="label">Status</label>
+              <select id="et-status" value={editTaskFormData.status} onChange={(e) => setEditTaskFormData({ ...editTaskFormData, status: e.target.value as TaskStatus })} className="input">
+                <option value="NOT_STARTED">Not Started</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="BLOCKED">Blocked</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            </div>
+            {currentUser?.role !== 'ENGINEER' && (
+              <div className="form-group">
+                <label htmlFor="et-poc" className="label">Assign To</label>
+                <select id="et-poc" value={editTaskFormData.assigned_to} onChange={(e) => setEditTaskFormData({ ...editTaskFormData, assigned_to: e.target.value })} className="input">
+                  <option value="">— Unassigned —</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+                </select>
+              </div>
+            )}
+            <div className="form-group">
+              <label htmlFor="et-build" className="label">Build Version</label>
+              <input id="et-build" type="text" value={editTaskFormData.build_version} onChange={(e) => setEditTaskFormData({ ...editTaskFormData, build_version: e.target.value })} className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="et-remarks" className="label">Remarks</label>
+              <textarea id="et-remarks" rows={2} value={editTaskFormData.remarks} onChange={(e) => setEditTaskFormData({ ...editTaskFormData, remarks: e.target.value })} className="input resize-none" />
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Comments Modal */}
+      <Modal isOpen={isCommentsModalOpen} onClose={() => { setIsCommentsModalOpen(false); setReplyTo(null); setNewComment(''); }} title={`Discussion: ${selectedTask?.name ?? ''}`} maxWidth="max-w-xl"
+        footer={null}
+      >
+        <div className="space-y-4">
+          {/* Comment list */}
+          <div className="max-h-72 overflow-y-auto space-y-3 pr-1" role="log" aria-label="Comments">
+            {comments.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-6">No comments yet. Be the first!</p>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-gray-700">{comment.user?.name ?? 'Unknown'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{new Date(comment.timestamp).toLocaleString()}</span>
+                      <button onClick={() => setReplyTo(comment.id)} className="btn-ghost text-xs text-blue-600 py-0.5 px-1.5" aria-label={`Reply to ${comment.user?.name ?? 'comment'}`}>
+                        <Reply size={12} /> Reply
+                      </button>
+                      <button onClick={() => handleDeleteComment(comment.id)} className="btn-ghost text-xs text-red-500 py-0.5 px-1.5" aria-label="Delete comment">
+                        <Trash size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700">{comment.content}</p>
+                  {/* Replies */}
+                  {comment.replies?.length > 0 && (
+                    <div className="mt-2 ml-4 space-y-2 border-l-2 border-gray-200 pl-3">
+                      {comment.replies.map((reply) => (
+                        <div key={reply.id} className="bg-white rounded p-2 border border-gray-100">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-xs font-semibold text-gray-600">{reply.user?.name ?? 'Unknown'}</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-400">{new Date(reply.timestamp).toLocaleString()}</span>
+                              <button onClick={() => handleDeleteComment(reply.id)} className="btn-ghost text-xs text-red-500 py-0.5 px-1" aria-label="Delete reply">
+                                <Trash size={11} />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-700">{reply.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Add comment form */}
+          {replyTo && (
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 text-xs text-blue-700">
+              <Reply size={12} /> Replying to comment #{replyTo}
+              <button onClick={() => setReplyTo(null)} className="ml-auto text-blue-500 hover:text-blue-700" aria-label="Cancel reply"><X size={12} /></button>
+            </div>
+          )}
+          <form onSubmit={handleAddComment} className="flex gap-2">
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder={replyTo ? 'Write a reply…' : 'Write a comment…'}
+              className="input flex-1"
+              aria-label="Comment input"
+            />
+            <button type="submit" disabled={!newComment.trim()} className="btn-primary px-3" aria-label="Post comment">
+              <Send size={15} />
+            </button>
+          </form>
         </div>
-      ))}
+      </Modal>
+
+      {/* Export Modal */}
+      <Modal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} title="Export Installation Data"
+        footer={
+          <>
+            <button onClick={() => setIsExportModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleExportCSV} className="btn-dark"><Download size={15} /> Download CSV</button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-500 mb-4">Select columns to include in the export.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(exportOptions) as (keyof typeof exportOptions)[]).map((key) => (
+            <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={exportOptions[key]} onChange={() => setExportOptions((p) => ({ ...p, [key]: !p[key] }))} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
+            </label>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 };

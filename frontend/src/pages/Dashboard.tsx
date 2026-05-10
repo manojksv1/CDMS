@@ -1,261 +1,267 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../api';
 import { Info, Sparkles, RefreshCw, Send } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { CardSkeleton, TableSkeleton } from '../components/Skeleton';
+import type {
+  DashboardSummary,
+  DelayedTaskDetail,
+  Implementation,
+  Client,
+  ChatMessage,
+} from '../types/api';
 
+// ---------------------------------------------------------------------------
+// Metric card
+// ---------------------------------------------------------------------------
+interface MetricCardProps {
+  title: string;
+  value: React.ReactNode;
+  color?: string;
+  info: string;
+  details?: string[];
+}
+
+const MetricCard: React.FC<MetricCardProps> = ({ title, value, color, info, details }) => {
+  const tooltip = details?.length
+    ? `${info}\n\nProjects:\n- ${details.join('\n- ')}`
+    : info;
+
+  return (
+    <div className="card p-5" title={tooltip}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+        <Info size={13} className="text-gray-400 cursor-help" aria-hidden="true" />
+      </div>
+      <p className={`text-3xl font-bold ${color ?? 'text-gray-900'}`}>{value}</p>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
 const Dashboard: React.FC = () => {
-  const [summary, setSummary] = useState<any>(null);
-  const [delays, setDelays] = useState<any[]>([]);
-  
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [delays, setDelays] = useState<DelayedTaskDetail[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [summaryType, setSummaryType] = useState<string>('implementation');
+  const [summaryType, setSummaryType] = useState<'implementation' | 'installation'>('implementation');
 
-  // Chat State
-  const [clients, setClients] = useState<any[]>([]);
-  const [implementations, setImplementations] = useState<any[]>([]);
-  const [selectedChatClient, setSelectedChatClient] = useState<string>('all');
+  const [clients, setClients] = useState<Client[]>([]);
+  const [implementations, setImplementations] = useState<Implementation[]>([]);
+  const [selectedChatTarget, setSelectedChatTarget] = useState<string>('all');
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState<{role: 'user' | 'ai', content: string}[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isChatting, setIsChatting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    if (messagesEndRef.current) {
-      const container = messagesEndRef.current.parentElement;
-      if (container) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-      }
-    }
-  };
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => { scrollToBottom(); }, [chatHistory, scrollToBottom]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [chatHistory]);
-
-  useEffect(() => {
-    const fetchDashboard = async () => {
+    const fetchAll = async () => {
+      setIsLoading(true);
       try {
         const [sumRes, delRes, clientsRes, impRes] = await Promise.all([
-          api.get('/dashboard/summary'),
-          api.get('/dashboard/delays'),
-          api.get('/clients/?limit=1000'), // Fetch all clients for the dropdown
-          api.get('/implementations/') // Fetch all implementations for the dropdown
+          api.get<DashboardSummary>('/dashboard/summary'),
+          api.get<DelayedTaskDetail[]>('/dashboard/delays'),
+          api.get<Client[]>('/clients/?limit=1000'),
+          api.get<Implementation[]>('/implementations/'),
         ]);
         setSummary(sumRes.data);
         setDelays(delRes.data);
         setClients(clientsRes.data);
         setImplementations(impRes.data);
-      } catch (err) {
-        console.error("Failed to fetch dashboard data", err);
+      } catch {
+        // errors shown via interceptor
+      } finally {
+        setIsLoading(false);
       }
     };
-    fetchDashboard();
+    fetchAll();
   }, []);
+
+  // Reset chat when context changes
+  useEffect(() => { setChatHistory([]); }, [summaryType, selectedChatTarget]);
 
   const handleGenerateSummary = async () => {
     setIsGenerating(true);
     setAiSummary(null);
     try {
-      const res = await api.get(`/dashboard/ai-summary?summary_type=${summaryType}`);
+      const res = await api.get<{ summary: string }>(`/dashboard/ai-summary?summary_type=${summaryType}`);
       setAiSummary(res.data.summary);
-    } catch (err) {
-      console.error(err);
-      setAiSummary("Failed to generate summary. Please check backend logs and ensure your GEMINI_API_KEY is set in the .env file.");
+    } catch {
+      setAiSummary('Failed to generate summary. Ensure GEMINI_API_KEY is configured.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  useEffect(() => {
-    setChatHistory([]);
-  }, [summaryType, selectedChatClient]);
-
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-
-    const userMsg = chatInput;
+    const userMsg = chatInput.trim();
     setChatInput('');
-    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+    setChatHistory((prev) => [...prev, { role: 'user', content: userMsg }]);
     setIsChatting(true);
-
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         query: userMsg,
         summary_type: summaryType,
-        history: chatHistory
+        history: chatHistory,
       };
-      if (selectedChatClient !== 'all') {
-        payload.client_id = parseInt(selectedChatClient);
-      }
-
-      const res = await api.post('/dashboard/ai-chat', payload);
-      setChatHistory(prev => [...prev, { role: 'ai', content: res.data.reply }]);
-    } catch (err) {
-      console.error(err);
-      setChatHistory(prev => [...prev, { role: 'ai', content: "Sorry, I encountered an error while fetching the answer." }]);
+      if (selectedChatTarget !== 'all') payload.client_id = parseInt(selectedChatTarget);
+      const res = await api.post<{ reply: string }>('/dashboard/ai-chat', payload);
+      setChatHistory((prev) => [...prev, { role: 'ai', content: res.data.reply }]);
+    } catch {
+      setChatHistory((prev) => [
+        ...prev,
+        { role: 'ai', content: 'Sorry, I encountered an error fetching the answer.' },
+      ]);
     } finally {
       setIsChatting(false);
     }
   };
 
-  if (!summary) return <div style={{ padding: '2rem' }}>Loading dashboard...</div>;
-
-  const MetricCard = ({ title, value, color, info, details }: { title: string, value: any, color?: string, info: string, details?: string[] }) => {
-    const tooltipText = details && details.length > 0 ? `${info}\n\nProjects:\n- ${details.join('\n- ')}` : info;
-    
+  if (isLoading) {
     return (
-      <div 
-        title={tooltipText}
-        style={{ background: 'white', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', position: 'relative' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
-          <h3 style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>{title}</h3>
-          <div style={{ cursor: 'help', color: '#9ca3af', display: 'flex' }}>
-            <Info size={14} />
-          </div>
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
-        <p style={{ margin: 0, fontSize: '1.875rem', fontWeight: 700, color: color || '#111827' }}>{value}</p>
+        <TableSkeleton rows={4} cols={5} />
       </div>
     );
-  };
+  }
+
+  if (!summary) return null;
 
   return (
-    <div className="dashboard" style={{ paddingBottom: '3rem' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginBottom: '1.5rem' }}>
-        Dashboard Summary
-      </h1>
-      
-      {/* Installation Tracker Section */}
-      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#4b5563', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Installation Tracker
-      </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-        <MetricCard 
-          title="Total Clients" 
-          value={summary.total_clients} 
-          info="Total number of unique clients in the system."
-        />
-        <MetricCard 
-          title="Tasks Completed" 
-          value={<>{summary.completed_tasks} <span style={{ fontSize: '1rem', color: '#9ca3af', fontWeight: 400 }}>/ {summary.total_tasks}</span></>}
-          info="Proportion of installation tasks marked as completed across all locations."
-        />
-        <MetricCard 
-          title="Installation Progress" 
-          value={`${summary.overall_progress}%`}
-          color="#10b981"
-          info="The average completion percentage of all installation tasks."
-        />
-        <MetricCard 
-          title="Delayed Tasks" 
-          value={summary.delayed_tasks}
-          color="#ef4444"
-          info="Tasks that are past their due date and not yet completed."
-          details={summary.delayed_task_details}
-        />
-      </div>
+    <div className="space-y-8 pb-10">
+      <h1 className="page-title">Dashboard Summary</h1>
 
-      {/* Implementation Tracker Section */}
-      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#4b5563', marginBottom: '1.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        Implementation Tracker
-      </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
-        <MetricCard 
-          title="Total Projects" 
-          value={summary.total_implementations}
-          info="Total number of software implementation projects currently active or completed."
-        />
-        <MetricCard 
-          title="Live Projects" 
-          value={summary.live_implementations}
-          color="#10b981"
-          info="Projects that have been successfully deployed and are now 'Live'."
-          details={summary.live_implementation_details}
-        />
-        <MetricCard 
-          title="Stagnant Projects" 
-          value={summary.stagnant_implementations}
-          color={summary.stagnant_implementations > 0 ? '#f59e0b' : '#10b981'}
-          info="Projects 'In Progress' or 'On Hold' that haven't had a daily log entry in the last 3 days."
-          details={summary.stagnant_implementation_details}
-        />
-        <MetricCard 
-          title="Active (In Progress)" 
-          value={summary.implementations_by_status?.InProgress || 0}
-          color="#3b82f6"
-          info="Total number of projects currently in the implementation phase."
-          details={summary.in_progress_implementation_details}
-        />
-      </div>
+      {/* Installation Tracker */}
+      <section aria-labelledby="installation-heading">
+        <h2 id="installation-heading" className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">
+          Installation Tracker
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard title="Total Clients" value={summary.total_clients} info="Total unique clients in the system." />
+          <MetricCard
+            title="Tasks Completed"
+            value={
+              <>
+                {summary.completed_tasks}
+                <span className="text-base text-gray-400 font-normal"> / {summary.total_tasks}</span>
+              </>
+            }
+            info="Installation tasks marked as completed."
+          />
+          <MetricCard
+            title="Installation Progress"
+            value={`${summary.overall_progress}%`}
+            color="text-emerald-600"
+            info="Average completion of all installation tasks."
+          />
+          <MetricCard
+            title="Delayed Tasks"
+            value={summary.delayed_tasks}
+            color={summary.delayed_tasks > 0 ? 'text-red-600' : 'text-emerald-600'}
+            info="Tasks past their due date and not completed."
+            details={summary.delayed_task_details}
+          />
+        </div>
+      </section>
 
-      {/* AI Executive Summary Section */}
-      <div style={{ background: 'linear-gradient(to right, #1e3a8a, #312e81)', padding: '2rem', borderRadius: '12px', marginBottom: '2.5rem', color: 'white', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: aiSummary ? '2rem' : '0' }}>
+      {/* Implementation Tracker */}
+      <section aria-labelledby="implementation-heading">
+        <h2 id="implementation-heading" className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">
+          Implementation Tracker
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <MetricCard title="Total Projects" value={summary.total_implementations} info="All software implementation projects." />
+          <MetricCard
+            title="Live Projects"
+            value={summary.live_implementations}
+            color="text-emerald-600"
+            info="Projects successfully deployed and live."
+            details={summary.live_implementation_details}
+          />
+          <MetricCard
+            title="Stagnant Projects"
+            value={summary.stagnant_implementations}
+            color={summary.stagnant_implementations > 0 ? 'text-amber-600' : 'text-emerald-600'}
+            info="In Progress / On Hold with no log in 3+ days."
+            details={summary.stagnant_implementation_details}
+          />
+          <MetricCard
+            title="Active (In Progress)"
+            value={summary.implementations_by_status?.InProgress ?? 0}
+            color="text-blue-600"
+            info="Projects currently in the implementation phase."
+            details={summary.in_progress_implementation_details}
+          />
+        </div>
+      </section>
+
+      {/* AI Executive Summary */}
+      <section
+        className="rounded-xl p-6 text-white"
+        style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #312e81 100%)' }}
+        aria-labelledby="ai-heading"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={20} style={{ color: '#60a5fa' }} />
+            <h2 id="ai-heading" className="text-lg font-bold flex items-center gap-2 mb-1">
+              <Sparkles size={20} className="text-blue-300" />
               Weekly Executive Summary
             </h2>
-            <p style={{ margin: '0 0 1rem 0', color: '#93c5fd', fontSize: '0.875rem' }}>
-              Generate an AI-powered summary of activity from the past 7 days.
-            </p>
-            <select 
-              value={summaryType} 
-              onChange={(e) => setSummaryType(e.target.value)}
+            <p className="text-blue-200 text-sm">AI-powered summary of the past 7 days.</p>
+            <select
+              value={summaryType}
+              onChange={(e) => setSummaryType(e.target.value as 'implementation' | 'installation')}
               disabled={isGenerating}
-              style={{
-                background: 'rgba(255,255,255,0.1)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.2)',
-                padding: '0.5rem 1rem',
-                borderRadius: '6px',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
+              className="mt-3 bg-white/10 text-white border border-white/20 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
+              aria-label="Select summary type"
             >
-              <option value="implementation" style={{ color: '#111827' }}>Implementation Tracker</option>
-              <option value="installation" style={{ color: '#111827' }}>Installation Tracker</option>
+              <option value="implementation" className="text-gray-900">Implementation Tracker</option>
+              <option value="installation" className="text-gray-900">Installation Tracker</option>
             </select>
           </div>
-          <button 
+          <button
             onClick={handleGenerateSummary}
             disabled={isGenerating}
-            style={{ 
-              background: isGenerating ? 'rgba(255,255,255,0.1)' : 'white', 
-              color: isGenerating ? 'white' : '#1e3a8a', 
-              border: 'none', 
-              padding: '0.75rem 1.5rem', 
-              borderRadius: '8px', 
-              fontWeight: 600, 
-              cursor: isGenerating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              transition: 'all 0.2s'
-            }}
+            className="btn bg-white text-blue-900 hover:bg-blue-50 focus:ring-white self-start"
           >
-            {isGenerating ? <><RefreshCw size={18} className="animate-spin" /> Analyzing Logs...</> : 'Generate Summary'}
+            {isGenerating ? (
+              <><RefreshCw size={16} className="animate-spin" /> Analysing…</>
+            ) : (
+              'Generate Summary'
+            )}
           </button>
         </div>
 
         {aiSummary && (
-          <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '1.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', lineHeight: 1.6, overflowX: 'auto', marginBottom: '1.5rem' }}>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-5 overflow-x-auto">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                h2: ({node, ...props}) => <h2 style={{ marginTop: '1.5rem', color: '#bfdbfe', fontSize: '1.25rem', fontWeight: 600 }} {...props} />,
-                h3: ({node, ...props}) => <h3 style={{ marginTop: '1.5rem', color: '#93c5fd', fontSize: '1.1rem', fontWeight: 600 }} {...props} />,
-                ul: ({node, ...props}) => <ul style={{ margin: '0.5rem 0 1rem 1.5rem', padding: 0 }} {...props} />,
-                li: ({node, ...props}) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
-                p: ({node, ...props}) => <p style={{ margin: '0 0 0.75rem 0' }} {...props} />,
-                strong: ({node, ...props}) => <strong style={{ color: 'white', fontWeight: 700 }} {...props} />,
-                table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem', marginBottom: '1rem' }} {...props} />,
-                thead: ({node, ...props}) => <thead style={{ background: 'rgba(255,255,255,0.1)' }} {...props} />,
-                th: ({node, ...props}) => <th style={{ padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.2)', textAlign: 'left', fontWeight: 600 }} {...props} />,
-                td: ({node, ...props}) => <td style={{ padding: '0.75rem 1rem', border: '1px solid rgba(255,255,255,0.2)' }} {...props} />
+                h2: ({ ...props }) => <h2 className="text-blue-200 text-lg font-semibold mt-4 mb-2" {...props} />,
+                h3: ({ ...props }) => <h3 className="text-blue-300 text-base font-semibold mt-3 mb-1" {...props} />,
+                p: ({ ...props }) => <p className="mb-2 text-sm leading-relaxed" {...props} />,
+                ul: ({ ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1" {...props} />,
+                li: ({ ...props }) => <li className="text-sm" {...props} />,
+                strong: ({ ...props }) => <strong className="text-white font-bold" {...props} />,
+                table: ({ ...props }) => <table className="w-full border-collapse mt-3 mb-3 text-sm" {...props} />,
+                th: ({ ...props }) => <th className="border border-white/20 px-3 py-2 text-left font-semibold bg-white/10" {...props} />,
+                td: ({ ...props }) => <td className="border border-white/20 px-3 py-2" {...props} />,
               }}
             >
               {aiSummary}
@@ -263,59 +269,52 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {/* AI Chatbot Section */}
+        {/* Chat */}
         {aiSummary && (
-          <div style={{ background: 'white', borderRadius: '8px', padding: '1.5rem', color: '#111827', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '1rem' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                <Sparkles size={18} style={{ color: '#3b82f6' }} /> Ask Questions About Your Data
+          <div className="bg-white rounded-xl p-5 text-gray-900">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200">
+              <h3 className="font-semibold flex items-center gap-2 text-sm">
+                <Sparkles size={16} className="text-blue-600" />
+                Ask Questions About Your Data
               </h3>
-              <select 
-                value={selectedChatClient} 
-                onChange={(e) => setSelectedChatClient(e.target.value)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  borderRadius: '6px',
-                  border: '1px solid #d1d5db',
-                  fontSize: '0.875rem',
-                  outline: 'none',
-                  background: '#f9fafb'
-                }}
+              <select
+                value={selectedChatTarget}
+                onChange={(e) => setSelectedChatTarget(e.target.value)}
+                className="input w-auto text-xs py-1"
+                aria-label="Filter by company"
               >
                 <option value="all">All Companies</option>
-                {summaryType === 'installation' 
-                  ? clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-                  : implementations.map(i => <option key={i.id} value={i.id}>{i.company_name}</option>)
+                {summaryType === 'installation'
+                  ? clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)
+                  : implementations.map((i) => <option key={i.id} value={i.id}>{i.company_name}</option>)
                 }
               </select>
             </div>
 
-            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div
+              className="max-h-72 overflow-y-auto flex flex-col gap-3 mb-4"
+              role="log"
+              aria-label="Chat history"
+              aria-live="polite"
+            >
               {chatHistory.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem 0' }}>
-                  Ask me anything about the {summaryType} status for {selectedChatClient === 'all' ? 'all companies' : 'the selected company'}!
-                </div>
+                <p className="text-center text-gray-400 text-sm py-6">
+                  Ask me anything about the {summaryType} data!
+                </p>
               ) : (
                 chatHistory.map((msg, idx) => (
-                  <div key={idx} style={{ 
-                    alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    background: msg.role === 'user' ? '#eff6ff' : '#f3f4f6',
-                    color: msg.role === 'user' ? '#1e40af' : '#374151',
-                    padding: '0.75rem 1rem',
-                    borderRadius: '12px',
-                    borderBottomRightRadius: msg.role === 'user' ? '2px' : '12px',
-                    borderBottomLeftRadius: msg.role === 'user' ? '12px' : '2px',
-                    maxWidth: '85%'
-                  }}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                  <div
+                    key={idx}
+                    className={`max-w-[85%] px-4 py-2.5 rounded-xl text-sm leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'self-end bg-blue-50 text-blue-900 rounded-br-sm'
+                        : 'self-start bg-gray-100 text-gray-800 rounded-bl-sm'
+                    }`}
+                  >
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}
                       components={{
-                        p: ({node, ...props}) => <p style={{ margin: 0 }} {...props} />,
-                        ul: ({node, ...props}) => <ul style={{ margin: '0.5rem 0 0 1.5rem', padding: 0 }} {...props} />,
-                        li: ({node, ...props}) => <li style={{ marginBottom: '0.25rem' }} {...props} />,
-                        table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }} {...props} />,
-                        th: ({node, ...props}) => <th style={{ padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', textAlign: 'left', fontSize: '0.8rem' }} {...props} />,
-                        td: ({node, ...props}) => <td style={{ padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', fontSize: '0.8rem' }} {...props} />
+                        p: ({ ...props }) => <p className="m-0" {...props} />,
+                        ul: ({ ...props }) => <ul className="list-disc ml-4 mt-1" {...props} />,
                       }}
                     >
                       {msg.content}
@@ -326,63 +325,67 @@ const Dashboard: React.FC = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleChatSubmit} style={{ display: 'flex', gap: '0.5rem' }}>
-              <input 
-                type="text" 
+            <form onSubmit={handleChatSubmit} className="flex gap-2">
+              <input
+                type="text"
                 value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                placeholder={`Ask about ${summaryType} data...`}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={`Ask about ${summaryType} data…`}
                 disabled={isChatting}
-                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', outline: 'none' }}
+                className="input flex-1"
+                aria-label="Chat input"
               />
-              <button 
+              <button
                 type="submit"
                 disabled={isChatting || !chatInput.trim()}
-                style={{ 
-                  background: '#3b82f6', color: 'white', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '8px', 
-                  cursor: (isChatting || !chatInput.trim()) ? 'not-allowed' : 'pointer',
-                  opacity: (isChatting || !chatInput.trim()) ? 0.7 : 1,
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600
-                }}
+                className="btn-primary px-3"
+                aria-label="Send message"
               >
                 {isChatting ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
             </form>
           </div>
         )}
-      </div>
+      </section>
 
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827', marginBottom: '1rem' }}>Delayed Tasks Breakdown</h2>
-      {delays.length === 0 ? (
-        <div style={{ background: 'white', padding: '2rem', borderRadius: '8px', textAlign: 'center', color: '#6b7280', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          All tasks are currently on schedule! No delays detected.
-        </div>
-      ) : (
-        <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-              <tr>
-                <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Task</th>
-                <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Client</th>
-                <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Location</th>
-                <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Due Date</th>
-                <th style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem', fontWeight: 500 }}>Days Delayed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {delays.map((d, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#111827' }}>{d.task.name}</td>
-                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#111827' }}>{d.client.name}</td>
-                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>{d.location.name}</td>
-                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>{d.task.due_date}</td>
-                  <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#c81e1e', fontWeight: 600 }}>{d.days_delayed} days</td>
+      {/* Delayed Tasks */}
+      <section aria-labelledby="delays-heading">
+        <h2 id="delays-heading" className="text-lg font-semibold text-gray-900 mb-4">
+          Delayed Tasks Breakdown
+        </h2>
+        {delays.length === 0 ? (
+          <div className="card p-8 text-center text-gray-500 text-sm">
+            All tasks are currently on schedule. No delays detected.
+          </div>
+        ) : (
+          <div className="table-wrapper">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Task</th>
+                  <th scope="col">Client</th>
+                  <th scope="col">Location</th>
+                  <th scope="col">Due Date</th>
+                  <th scope="col">Days Delayed</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {delays.map((d, i) => (
+                  <tr key={i}>
+                    <td className="font-medium text-gray-900">{d.task.name}</td>
+                    <td>{d.client.name}</td>
+                    <td className="text-gray-500">{d.location.name}</td>
+                    <td className="text-gray-500">{d.task.due_date}</td>
+                    <td>
+                      <span className="font-semibold text-red-600">{d.days_delayed} days</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

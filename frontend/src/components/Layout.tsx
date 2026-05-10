@@ -2,10 +2,31 @@ import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { LayoutDashboard, Users, LogOut, Shield, ClipboardList, Wrench } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Users,
+  LogOut,
+  Shield,
+  ClipboardList,
+  Wrench,
+} from 'lucide-react';
 import Notification from './Notification';
 import { motion } from 'framer-motion';
-import './Layout.css';
+
+const PAGE_TITLES: Record<string, string> = {
+  '/': 'Dashboard',
+  '/clients': 'Installation Tracker',
+  '/implementations': 'Implementation Tracker',
+  '/implementations/template': 'Milestone Template',
+  '/users': 'User Management',
+};
+
+function getPageTitle(pathname: string): string {
+  if (pathname.startsWith('/implementations/') && pathname !== '/implementations/template') {
+    return 'Implementation Detail';
+  }
+  return PAGE_TITLES[pathname] ?? 'CDMS';
+}
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuthStore();
@@ -15,87 +36,127 @@ const Layout: React.FC = () => {
   const handleLogout = async () => {
     try {
       await api.post('/auth/logout');
-    } catch (err) {
-      console.error('Logout failed', err);
+    } catch {
+      // ignore — clear local state regardless
     } finally {
       logout();
       navigate('/login');
     }
   };
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+      isActive
+        ? 'bg-blue-700 text-white shadow-sm'
+        : 'text-gray-300 hover:bg-white/10 hover:text-white'
+    }`;
+
   return (
-    <div className="app-container">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
       <Notification />
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <Shield className="logo-icon" size={24} />
-          <h2>CDMS Tracker</h2>
+
+      {/* Sidebar */}
+      <aside className="w-60 flex-shrink-0 bg-gray-900 flex flex-col">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <Shield size={18} className="text-white" />
+          </div>
+          <span className="text-white font-bold text-base tracking-tight">CDMS Tracker</span>
         </div>
-        
-        <nav className="sidebar-nav">
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {user?.role !== 'ENGINEER' && (
-            <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <LayoutDashboard size={20} />
+            <NavLink to="/" end className={navLinkClass}>
+              <LayoutDashboard size={18} />
               <span>Dashboard</span>
             </NavLink>
           )}
 
           {(user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
-            <NavLink to="/implementations" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <ClipboardList size={20} />
-              <span>Implementation Tracker</span>
+            <NavLink to="/implementations" className={navLinkClass}>
+              <ClipboardList size={18} />
+              <span>Implementation</span>
             </NavLink>
           )}
 
-          {user?.role !== 'ENGINEER' && (user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
-            <NavLink to="/implementations/template" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Wrench size={20} />
-              <span>Milestone Template</span>
-            </NavLink>
-          )}
-          
+          {user?.role !== 'ENGINEER' &&
+            (user?.software_access === 'BOTH' || user?.software_access === 'IMPLEMENTATION') && (
+              <NavLink to="/implementations/template" className={navLinkClass}>
+                <Wrench size={18} />
+                <span>Milestone Template</span>
+              </NavLink>
+            )}
+
           {(user?.software_access === 'BOTH' || user?.software_access === 'INSTALLATION') && (
-            <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Users size={20} />
-              <span>Installation Tracker</span>
+            <NavLink to="/clients" className={navLinkClass}>
+              <Users size={18} />
+              <span>Installation</span>
             </NavLink>
           )}
-          
+
           {user?.role !== 'ENGINEER' && (
-            <NavLink to="/users" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <Users size={20} />
+            <NavLink to="/users" className={navLinkClass}>
+              <Users size={18} />
               <span>Users</span>
             </NavLink>
           )}
         </nav>
-      </aside>
-      
-      <main className="main-content">
-        <header className="top-header">
-          <div className="header-title">
-            <h1>{window.location.pathname.includes('implementation') ? 'Implementation Tracker' : 'Installation Tracker'}</h1>
-          </div>
-          <div className="user-profile">
-            <div className="user-info">
-              <span className="user-name">{user?.name}</span>
-              <span className="user-role">{user?.role}</span>
+
+        {/* User footer */}
+        <div className="px-3 py-4 border-t border-white/10">
+          <div className="flex items-center gap-3 px-2 py-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              {user?.name?.charAt(0).toUpperCase()}
             </div>
-            <button className="logout-button" onClick={handleLogout} title="Logout">
-              <LogOut size={18} />
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-medium truncate">{user?.name}</p>
+              <p className="text-gray-400 text-xs">{user?.role}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-gray-400 hover:text-white transition-colors p-1 rounded"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut size={16} />
             </button>
           </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <h1 className="text-lg font-semibold text-gray-900">
+            {getPageTitle(location.pathname)}
+          </h1>
+          <div className="flex items-center gap-2">
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
+              {user?.software_access === 'BOTH'
+                ? 'Full Access'
+                : user?.software_access === 'INSTALLATION'
+                ? 'Installation'
+                : 'Implementation'}
+            </span>
+          </div>
         </header>
-        
-        <motion.div
-          key={location.pathname}
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="content-wrapper"
-        >
-          <Outlet />
-        </motion.div>
-      </main>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="p-6 max-w-screen-2xl mx-auto"
+          >
+            <Outlet />
+          </motion.div>
+        </main>
+      </div>
     </div>
   );
 };

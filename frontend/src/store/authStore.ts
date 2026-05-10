@@ -1,31 +1,27 @@
 import { create } from 'zustand';
-
-interface User {
-  id: number;
-  name: string;
-  role: 'ADMIN' | 'MANAGER' | 'ENGINEER';
-  software_access: 'INSTALLATION' | 'IMPLEMENTATION' | 'BOTH';
-  timezone?: string;
-}
+import type { AuthUser } from '../types/api';
 
 interface AuthState {
-  token: string | null;
-  user: User | null;
-  login: (token: string, user: User) => void;
+  user: AuthUser | null;
+  isInitialised: boolean;
+  login: (user: AuthUser) => void;
   logout: () => void;
+  setInitialised: (user: AuthUser | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') as string) : null,
-  token: null, // Token is now in HttpOnly cookie
+  user: null,
+  isInitialised: false,
 
-  login: (_, user) => {
-    localStorage.setItem('user', JSON.stringify(user));
+  login: (user) => {
     set({ user });
   },
-  
+
   logout: () => {
-    localStorage.removeItem('user');
     set({ user: null });
+  },
+
+  setInitialised: (user) => {
+    set({ user, isInitialised: true });
   },
 }));

@@ -1,27 +1,49 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cdms_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cdms_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-cdms_db}
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cdms_user} -d ${POSTGRES_DB:-cdms_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    restart: always
+    restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-cdms_user}:${POSTGRES_PASSWORD:-cdms_password}@db:5432/${POSTGRES_DB:-cdms_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cdms_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-cdms_db}
       - SECRET_KEY=${SECRET_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - COOKIE_SECURE=True
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-lite-preview}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # No source volume mount in prod — image is self-contained
+    # No node_modules volume needed — backend has no node_modules
 
   frontend:
     build:
@@ -29,10 +51,12 @@ services:
       dockerfile: Dockerfile.prod
       args:
         - VITE_API_URL=${VITE_API_URL:-/api}
+    restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-80}:80"
     depends_on:
       - backend
+    # No volumes in prod — nginx serves the compiled static files baked into the image
 
 volumes:
   postgres_data_prod:

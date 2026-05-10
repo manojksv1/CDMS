@@ -1,500 +1,452 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { 
-  Plus, 
-  Search, 
-  ExternalLink, 
-  Calendar, 
-  User, 
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  X,
-  UserCheck,
-  Download
+import {
+  Plus, Search, ExternalLink, Calendar, User,
+  CheckCircle2, Clock, AlertCircle, X, UserCheck, Download,
 } from 'lucide-react';
+import Modal from '../components/Modal';
+import { TableSkeleton } from '../components/Skeleton';
+import type { Implementation, ImplementationCreate, User as UserType, ImplementationStatus } from '../types/api';
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const STATUS_STYLES: Record<ImplementationStatus, { badge: string; icon: React.ReactNode; label: string }> = {
+  Live:        { badge: 'badge-green',  icon: <CheckCircle2 size={12} />, label: 'Live' },
+  Completed:   { badge: 'badge-blue',   icon: <CheckCircle2 size={12} />, label: 'Completed' },
+  Blocked:     { badge: 'badge-red',    icon: <X size={12} />,            label: 'Blocked' },
+  OnHold:      { badge: 'badge-yellow', icon: <AlertCircle size={12} />,  label: 'On Hold' },
+  InProgress:  { badge: 'badge-gray',   icon: <Clock size={12} />,        label: 'In Progress' },
+};
+
+const STATUS_FILTERS: ImplementationStatus[] = ['InProgress', 'Live', 'Completed', 'OnHold', 'Blocked'];
+
+const EMPTY_FORM: ImplementationCreate & { assigned_user_id_str: string } = {
+  company_name: '', zone: '', assigned_user_id: null, assigned_user_id_str: '',
+  po_date: null, poc_1: null, poc_2: null, license_uat: null, license_prod: null,
+  uat_version: null, prod_version: null, start_date: null, expected_end_date: null,
+  status: 'InProgress', status_remarks: null,
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 const Implementations: React.FC = () => {
-  const [implementations, setImplementations] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [implementations, setImplementations] = useState<Implementation[]>([]);
+  const [users, setUsers] = useState<UserType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  
-  const currentUser = useAuthStore(state => state.user);
-  const showNotification = useNotificationStore(state => state.show);
-  const navigate = useNavigate();
-
-  // Modal states
+  const [statusFilter, setStatusFilter] = useState<'All' | ImplementationStatus>('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState(EMPTY_FORM);
   const [exportOptions, setExportOptions] = useState({
-    companyName: true,
-    engineer: true,
-    status: true,
-    targetDate: true,
-    poc1: true,
-    poc2: true,
-    licenseUat: true,
-    licenseProd: true,
-    uatVersion: true,
-    prodVersion: true,
-    poDate: true,
-    startDate: true,
-    remarks: true
+    companyName: true, engineer: true, status: true, targetDate: true,
+    poc1: true, poc2: true, licenseUat: true, licenseProd: true,
+    uatVersion: true, prodVersion: true, poDate: true, startDate: true, remarks: true,
   });
 
-  const [formData, setFormData] = useState({
-    company_name: '',
-    zone: '',
-    assigned_user_id: '',
-    po_date: '',
-    poc_1: '',
-    poc_2: '',
-    license_uat: '',
-    license_prod: '',
-    uat_version: '',
-    prod_version: '',
-    start_date: '',
-    expected_end_date: '',
-    status: 'InProgress',
-    status_remarks: ''
-  });
+  const currentUser = useAuthStore((s) => s.user);
+  const showNotification = useNotificationStore((s) => s.show);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const requests: Promise<any>[] = [
-        api.get('/implementations/')
-      ];
-      
-      if (currentUser?.role && currentUser.role !== 'ENGINEER') {
-        requests.push(api.get('/users/'));
+      const requests: Promise<{ data: unknown }>[] = [api.get<Implementation[]>('/implementations/')];
+      if (currentUser?.role !== 'ENGINEER') {
+        requests.push(api.get<UserType[]>('/users/'));
       }
-      
-      const responses = await Promise.all(requests);
-      setImplementations(responses[0]?.data || []);
-      if (responses[1]) {
-        setUsers(responses[1].data.filter((u: any) => u.role === 'ENGINEER'));
+      const [impRes, usersRes] = await Promise.all(requests);
+      setImplementations((impRes as { data: Implementation[] }).data);
+      if (usersRes) {
+        setUsers(((usersRes as { data: UserType[] }).data).filter((u) => u.role === 'ENGINEER'));
       }
-    } catch (err) {
-      console.error("Fetch Error:", err);
+    } catch {
+      // handled by interceptor
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser?.role]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const filteredImplementations = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return implementations.filter((imp) => {
+      const matchesSearch =
+        !q ||
+        imp.company_name.toLowerCase().includes(q) ||
+        (imp.poc_1?.toLowerCase().includes(q) ?? false);
+      const matchesStatus = statusFilter === 'All' || imp.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [implementations, searchQuery, statusFilter]);
 
   const handleAddImplementation = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
-      // Clean up payload: Convert empty strings to null for dates and IDs
-      const payload = { 
-        ...formData, 
-        assigned_user_id: formData.assigned_user_id ? parseInt(formData.assigned_user_id) : null,
+      const payload: ImplementationCreate = {
+        ...formData,
+        assigned_user_id: formData.assigned_user_id_str
+          ? parseInt(formData.assigned_user_id_str)
+          : null,
         po_date: formData.po_date || null,
         start_date: formData.start_date || null,
-        expected_end_date: formData.expected_end_date || null
+        expected_end_date: formData.expected_end_date || null,
       };
-      
       await api.post('/implementations/', payload);
-      showNotification("Project created and assigned!", "success");
+      showNotification('Project created successfully!', 'success');
       setIsAddModalOpen(false);
-      setFormData({
-        company_name: '',
-        zone: '',
-        assigned_user_id: '',
-        po_date: '',
-        poc_1: '',
-        poc_2: '',
-        license_uat: '',
-        license_prod: '',
-        uat_version: '',
-        prod_version: '',
-        start_date: '',
-        expected_end_date: '',
-        status: 'InProgress',
-        status_remarks: ''
-      });
+      setFormData(EMPTY_FORM);
       fetchData();
-    } catch (err) {
-      console.error("Create Error:", err);
+    } catch {
+      // handled by interceptor
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleExportCSV = () => {
-    try {
-      const headers = [];
-      if (exportOptions.companyName) headers.push("Company Name");
-      if (exportOptions.engineer) headers.push("Engineer");
-      if (exportOptions.status) headers.push("Status");
-      if (exportOptions.targetDate) headers.push("Target Date");
-      if (exportOptions.poc1) headers.push("POC 1");
-      if (exportOptions.poc2) headers.push("POC 2");
-      if (exportOptions.licenseUat) headers.push("License (UAT)");
-      if (exportOptions.licenseProd) headers.push("License (Prod)");
-      if (exportOptions.uatVersion) headers.push("UAT Version");
-      if (exportOptions.prodVersion) headers.push("Prod Version");
-      if (exportOptions.poDate) headers.push("PO Date");
-      if (exportOptions.startDate) headers.push("Start Date");
-      if (exportOptions.remarks) headers.push("Status Remarks");
+    const headers: string[] = [];
+    if (exportOptions.companyName) headers.push('Company Name');
+    if (exportOptions.engineer) headers.push('Engineer');
+    if (exportOptions.status) headers.push('Status');
+    if (exportOptions.targetDate) headers.push('Target Date');
+    if (exportOptions.poc1) headers.push('POC 1');
+    if (exportOptions.poc2) headers.push('POC 2');
+    if (exportOptions.licenseUat) headers.push('License (UAT)');
+    if (exportOptions.licenseProd) headers.push('License (Prod)');
+    if (exportOptions.uatVersion) headers.push('UAT Version');
+    if (exportOptions.prodVersion) headers.push('Prod Version');
+    if (exportOptions.poDate) headers.push('PO Date');
+    if (exportOptions.startDate) headers.push('Start Date');
+    if (exportOptions.remarks) headers.push('Status Remarks');
 
-      const csvRows = [];
-      csvRows.push(headers.join(","));
+    const esc = (v: unknown) => {
+      if (v == null) return '""';
+      return `"${String(v).replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    };
 
-      const escapeCsv = (val: any) => {
-        if (val === null || val === undefined) return '""';
-        const str = String(val).replace(/"/g, '""').replace(/\n/g, " ");
-        return `"${str}"`;
-      };
+    const rows = [headers.join(',')];
+    filteredImplementations.forEach((imp) => {
+      const row: string[] = [];
+      if (exportOptions.companyName) row.push(esc(imp.company_name));
+      if (exportOptions.engineer) row.push(esc(imp.assigned_user_name ?? 'Unassigned'));
+      if (exportOptions.status) row.push(esc(imp.status));
+      if (exportOptions.targetDate) row.push(esc(imp.expected_end_date));
+      if (exportOptions.poc1) row.push(esc(imp.poc_1));
+      if (exportOptions.poc2) row.push(esc(imp.poc_2));
+      if (exportOptions.licenseUat) row.push(esc(imp.license_uat));
+      if (exportOptions.licenseProd) row.push(esc(imp.license_prod));
+      if (exportOptions.uatVersion) row.push(esc(imp.uat_version));
+      if (exportOptions.prodVersion) row.push(esc(imp.prod_version));
+      if (exportOptions.poDate) row.push(esc(imp.po_date));
+      if (exportOptions.startDate) row.push(esc(imp.start_date));
+      if (exportOptions.remarks) row.push(esc(imp.status_remarks));
+      rows.push(row.join(','));
+    });
 
-      filteredImplementations.forEach(imp => {
-        const row = [];
-        if (exportOptions.companyName) row.push(escapeCsv(imp.company_name));
-        if (exportOptions.engineer) row.push(escapeCsv(imp.assigned_user_name || 'Unassigned'));
-        if (exportOptions.status) row.push(escapeCsv(imp.status));
-        if (exportOptions.targetDate) row.push(escapeCsv(imp.expected_end_date));
-        if (exportOptions.poc1) row.push(escapeCsv(imp.poc_1));
-        if (exportOptions.poc2) row.push(escapeCsv(imp.poc_2));
-        if (exportOptions.licenseUat) row.push(escapeCsv(imp.license_uat));
-        if (exportOptions.licenseProd) row.push(escapeCsv(imp.license_prod));
-        if (exportOptions.uatVersion) row.push(escapeCsv(imp.uat_version));
-        if (exportOptions.prodVersion) row.push(escapeCsv(imp.prod_version));
-        if (exportOptions.poDate) row.push(escapeCsv(imp.po_date));
-        if (exportOptions.startDate) row.push(escapeCsv(imp.start_date));
-        if (exportOptions.remarks) row.push(escapeCsv(imp.status_remarks));
-        csvRows.push(row.join(","));
-      });
-
-      const csvString = csvRows.join("\n");
-      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", `software_implementations_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setIsExportModalOpen(false);
-      showNotification("CSV Export started", "success");
-    } catch (err) {
-      console.error(err);
-      showNotification("Export failed", "error");
-    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `implementations_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setIsExportModalOpen(false);
+    showNotification('CSV exported!', 'success');
   };
 
-  const filteredImplementations = implementations.filter(imp => {
-    const cName = imp.company_name?.toLowerCase() || '';
-    const pName = imp.poc_name?.toLowerCase() || '';
-    const query = searchQuery.toLowerCase();
-    
-    const matchesSearch = cName.includes(query) || pName.includes(query);
-    const matchesStatus = statusFilter === 'All' || imp.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Live': return { bg: '#def7ec', text: '#03543f', icon: <CheckCircle2 size={14} /> };
-      case 'Blocked': return { bg: '#fde8e8', text: '#9b1c1c', icon: <X size={14} /> };
-      case 'OnHold': return { bg: '#fef3c7', text: '#92400e', icon: <AlertCircle size={14} /> };
-      case 'Completed': return { bg: '#e1effe', text: '#1e429f', icon: <CheckCircle2 size={14} /> };
-      default: return { bg: '#f3f4f6', text: '#374151', icon: <Clock size={14} /> };
-    }
-  };
-
-  if (isLoading) {
-    return <div className="p-10 text-center">Loading Implementations Tracker...</div>;
-  }
+  const f = (v: string | null | undefined) => v || '';
 
   return (
-    <div className="p-6">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+    <div>
+      {/* Header */}
+      <div className="page-header flex-wrap gap-4">
         <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Implementation Tracker</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>
-            {currentUser?.role === 'ENGINEER' ? 'Manage your assigned deployments' : 'Monitor and dispatch ongoing client DMS deployments'}
+          <h1 className="page-title">Implementation Tracker</h1>
+          <p className="page-subtitle">
+            {currentUser?.role === 'ENGINEER'
+              ? 'Your assigned deployments'
+              : 'Monitor and manage client DMS deployments'}
           </p>
         </div>
-        
         {currentUser?.role !== 'ENGINEER' && (
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button 
-              onClick={() => setIsExportModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', color: '#374151', padding: '0.625rem 1.25rem', borderRadius: '8px', border: '1px solid #d1d5db', cursor: 'pointer', fontWeight: 600 }}
-            >
-              <Download size={18} /> Export
+          <div className="flex gap-2">
+            <button onClick={() => setIsExportModalOpen(true)} className="btn-secondary">
+              <Download size={16} /> Export
             </button>
-            <button 
-              onClick={() => setIsAddModalOpen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#1a56db', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
-            >
-              <Plus size={18} /> New Project
+            <button onClick={() => setIsAddModalOpen(true)} className="btn-primary">
+              <Plus size={16} /> New Project
             </button>
           </div>
         )}
       </div>
 
-      {/* Filters & Search */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
-          <Search style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} size={18} />
-          <input 
-            type="text" 
-            placeholder="Search by company or POC..." 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <div className="relative flex-1 min-w-64">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="Search by company or POC…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '0.625rem 1rem 0.625rem 2.5rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.875rem' }}
+            className="input pl-9"
+            aria-label="Search implementations"
           />
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', padding: '0.25rem', borderRadius: '8px', border: '1px solid #d1d5db' }}>
-          {['All', 'InProgress', 'Live', 'Completed', 'OnHold', 'Blocked'].map((status) => (
-            <button 
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              style={{ 
-                padding: '0.375rem 0.75rem', 
-                borderRadius: '6px', 
-                border: 'none', 
-                fontSize: '0.875rem', 
-                fontWeight: 500, 
-                cursor: 'pointer', 
-                background: statusFilter === status ? '#f3f4f6' : 'transparent', 
-                color: statusFilter === status ? '#111827' : '#6b7280' 
-              }}
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
+          <button
+            onClick={() => setStatusFilter('All')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${statusFilter === 'All' ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            All
+          </button>
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${statusFilter === s ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
             >
-              {status === 'InProgress' ? 'In Progress' : status === 'OnHold' ? 'On Hold' : status}
+              {STATUS_STYLES[s].label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Table */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client & Assignment</th>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Progress</th>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Target Date</th>
-              <th style={{ padding: '1rem', fontSize: '0.75rem', fontWeight: 600, color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredImplementations.map((imp) => {
-              const statusStyle = getStatusColor(imp.status);
-              return (
-                <tr key={imp.id} style={{ borderBottom: '1px solid #e5e7eb', transition: 'background 0.2s' }}>
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ fontWeight: 600, color: '#111827', marginBottom: '0.25rem' }}>{imp.company_name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><User size={12} /> POC: {imp.poc_1 || 'None'}</span>
-                      <span style={{ color: '#e5e7eb' }}>|</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#1a56db', fontWeight: 500 }}><UserCheck size={12} /> Engineer: {imp.assigned_user_name || 'Unassigned'}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem', width: '220px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <div style={{ flex: 1, height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: `${imp.current_percentage}%`, height: '100%', background: imp.current_percentage === 100 ? '#059669' : '#1a56db', transition: 'width 0.5s ease-out' }} />
+      {/* Table */}
+      {isLoading ? (
+        <TableSkeleton rows={5} cols={5} />
+      ) : (
+        <div className="table-wrapper">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Client & Assignment</th>
+                <th scope="col">Progress</th>
+                <th scope="col">Status</th>
+                <th scope="col">Target Date</th>
+                <th scope="col" className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredImplementations.map((imp) => {
+                const style = STATUS_STYLES[imp.status] ?? STATUS_STYLES.InProgress;
+                return (
+                  <tr key={imp.id}>
+                    <td>
+                      <p className="font-semibold text-gray-900">{imp.company_name}</p>
+                      <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <User size={11} aria-hidden="true" /> POC: {imp.poc_1 ?? 'None'}
+                        </span>
+                        <span className="flex items-center gap-1 text-blue-700 font-medium">
+                          <UserCheck size={11} aria-hidden="true" />
+                          {imp.assigned_user_name ?? 'Unassigned'}
+                        </span>
                       </div>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>{Math.round(imp.current_percentage)}%</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <span 
-                      style={{ 
-                        display: 'inline-flex', alignItems: 'center', gap: '0.375rem', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: statusStyle.bg, color: statusStyle.text,
-                        cursor: imp.status_remarks ? 'help' : 'default'
-                      }}
-                      title={imp.status_remarks || ''}
-                    >
-                      {statusStyle.icon} {imp.status === 'InProgress' ? 'In Progress' : imp.status === 'OnHold' ? 'On Hold' : imp.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '1rem' }}>
-                    <div style={{ fontSize: '0.875rem', color: '#374151', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Calendar size={14} style={{ color: '#6b7280' }} />
-                      {imp.expected_end_date ? new Date(imp.expected_end_date).toLocaleDateString() : 'TBD'}
-                    </div>
-                  </td>
-                  <td style={{ padding: '1rem', textAlign: 'right' }}>
-                    <button onClick={() => navigate(`/implementations/${imp.id}`)} style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db', background: 'white', cursor: 'pointer', color: '#374151', display: 'inline-flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.875rem' }}>
-                      View Details <ExternalLink size={14} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {filteredImplementations.length === 0 && !isLoading && (
-          <div style={{ padding: '4rem', textAlign: 'center' }}>
-            <div style={{ color: '#9ca3af', marginBottom: '1rem' }}><Search size={48} style={{ margin: '0 auto' }} /></div>
-            <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#374151' }}>No implementation projects found</h3>
-            <p style={{ color: '#6b7280' }}>
-              {currentUser?.role === 'ENGINEER' 
-                ? "You don't have any projects assigned yet." 
-                : "Search or add a new project from the CRM to get started."}
-            </p>
-          </div>
-        )}
-      </div>
+                    </td>
+                    <td className="w-52">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${imp.current_percentage >= 100 ? 'bg-emerald-500' : 'bg-blue-600'}`}
+                            style={{ width: `${imp.current_percentage}%` }}
+                            role="progressbar"
+                            aria-valuenow={imp.current_percentage}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold text-gray-700 w-10 text-right">
+                          {Math.round(imp.current_percentage)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className={`${style.badge} cursor-default`}
+                        title={imp.status_remarks ?? ''}
+                      >
+                        {style.icon}
+                        {style.label}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="flex items-center gap-1.5 text-gray-600">
+                        <Calendar size={13} aria-hidden="true" />
+                        {imp.expected_end_date
+                          ? new Date(imp.expected_end_date).toLocaleDateString()
+                          : 'TBD'}
+                      </span>
+                    </td>
+                    <td className="text-right">
+                      <button
+                        onClick={() => navigate(`/implementations/${imp.id}`)}
+                        className="btn-secondary text-xs py-1.5"
+                        aria-label={`View details for ${imp.company_name}`}
+                      >
+                        View <ExternalLink size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filteredImplementations.length === 0 && (
+            <div className="py-16 text-center">
+              <Search size={40} className="mx-auto text-gray-300 mb-3" aria-hidden="true" />
+              <p className="font-semibold text-gray-600">No projects found</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {currentUser?.role === 'ENGINEER'
+                  ? "You don't have any projects assigned yet."
+                  : 'Try adjusting your search or add a new project.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Project Modal */}
-      {isAddModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '600px', padding: '2rem', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Start New Implementation</h2>
-              <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Start New Implementation"
+        maxWidth="max-w-2xl"
+        footer={
+          <>
+            <button onClick={() => setIsAddModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="add-impl-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Creating…' : 'Create Project'}
+            </button>
+          </>
+        }
+      >
+        <form id="add-impl-form" onSubmit={handleAddImplementation} noValidate>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label htmlFor="company_name" className="label">Company Name <span className="text-red-500">*</span></label>
+              <input id="company_name" required type="text" value={formData.company_name}
+                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                className="input" />
             </div>
-            
-            <form onSubmit={handleAddImplementation}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Company Name *</label>
-                  <input required type="text" value={formData.company_name} onChange={e => setFormData({...formData, company_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Assign Engineer</label>
-                  <select value={formData.assigned_user_id} onChange={e => setFormData({...formData, assigned_user_id: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="">-- Unassigned --</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
+            <div className="form-group col-span-2 sm:col-span-1">
+              <label htmlFor="engineer" className="label">Assign Engineer</label>
+              <select id="engineer" value={formData.assigned_user_id_str}
+                onChange={(e) => setFormData({ ...formData, assigned_user_id_str: e.target.value })}
+                className="input">
+                <option value="">— Unassigned —</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="poc1" className="label">POC 1</label>
+              <input id="poc1" type="text" value={f(formData.poc_1)}
+                onChange={(e) => setFormData({ ...formData, poc_1: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="poc2" className="label">POC 2</label>
+              <input id="poc2" type="text" value={f(formData.poc_2)}
+                onChange={(e) => setFormData({ ...formData, poc_2: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="uat_version" className="label">UAT Version</label>
+              <input id="uat_version" type="text" value={f(formData.uat_version)}
+                onChange={(e) => setFormData({ ...formData, uat_version: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="prod_version" className="label">Prod Version</label>
+              <input id="prod_version" type="text" value={f(formData.prod_version)}
+                onChange={(e) => setFormData({ ...formData, prod_version: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="status" className="label">Status</label>
+              <select id="status" value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value as ImplementationStatus })}
+                className="input">
+                <option value="InProgress">In Progress</option>
+                <option value="OnHold">On Hold</option>
+                <option value="Blocked">Blocked</option>
+                <option value="Live">Live</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label htmlFor="po_date" className="label">PO Date</label>
+              <input id="po_date" type="date" value={f(formData.po_date)}
+                onChange={(e) => setFormData({ ...formData, po_date: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="start_date" className="label">Start Date</label>
+              <input id="start_date" type="date" value={f(formData.start_date)}
+                onChange={(e) => setFormData({ ...formData, start_date: e.target.value || null })}
+                className="input" />
+            </div>
+            <div className="form-group">
+              <label htmlFor="end_date" className="label">Target End Date</label>
+              <input id="end_date" type="date" value={f(formData.expected_end_date)}
+                onChange={(e) => setFormData({ ...formData, expected_end_date: e.target.value || null })}
+                className="input" />
+            </div>
+            {(formData.status === 'Blocked' || formData.status === 'OnHold') && (
+              <div className="form-group col-span-2">
+                <label htmlFor="status_remarks" className="label">
+                  Status Remarks <span className="text-red-500">*</span>
+                </label>
+                <textarea id="status_remarks" required rows={2}
+                  value={f(formData.status_remarks)}
+                  onChange={(e) => setFormData({ ...formData, status_remarks: e.target.value || null })}
+                  className="input resize-none"
+                  placeholder={`Reason for ${formData.status === 'OnHold' ? 'On Hold' : 'Blocked'} status…`}
+                />
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>POC 1</label>
-                  <input type="text" value={formData.poc_1} onChange={e => setFormData({...formData, poc_1: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>POC 2</label>
-                  <input type="text" value={formData.poc_2} onChange={e => setFormData({...formData, poc_2: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>License (UAT)</label>
-                  <input type="text" value={formData.license_uat} onChange={e => setFormData({...formData, license_uat: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>License (Prod)</label>
-                  <input type="text" value={formData.license_prod} onChange={e => setFormData({...formData, license_prod: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>UAT Version</label>
-                  <input type="text" value={formData.uat_version} onChange={e => setFormData({...formData, uat_version: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Prod Version</label>
-                  <input type="text" value={formData.prod_version} onChange={e => setFormData({...formData, prod_version: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status</label>
-                  <select value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', background: 'white' }}>
-                    <option value="InProgress">In Progress</option>
-                    <option value="OnHold">On Hold</option>
-                    <option value="Blocked">Blocked</option>
-                    <option value="Live">Live</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>PO Date</label>
-                  <input type="date" value={formData.po_date} onChange={e => setFormData({...formData, po_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
-
-              {(formData.status === 'Blocked' || formData.status === 'OnHold') && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Status Remarks (Why is it {formData.status === 'OnHold' ? 'On Hold' : formData.status}?)</label>
-                  <textarea 
-                    required
-                    rows={2} 
-                    value={formData.status_remarks} 
-                    onChange={e => setFormData({...formData, status_remarks: e.target.value})} 
-                    style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', resize: 'none' }} 
-                    placeholder={`Reason for ${formData.status === 'OnHold' ? 'On Hold' : formData.status} status...`}
-                  />
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Start Date</label>
-                  <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 600 }}>Target End Date</label>
-                  <input type="date" value={formData.expected_end_date} onChange={e => setFormData({...formData, expected_end_date: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
-                <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Create Project</button>
-              </div>
-            </form>
+            )}
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {/* Export Modal */}
-      {isExportModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '1rem' }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '500px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Export Software Projects</h2>
-              <button onClick={() => setIsExportModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={24} /></button>
-            </div>
-            
-            <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1.5rem' }}>Select the columns you wish to include in your CSV export.</p>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '2rem' }}>
-              {Object.entries(exportOptions).map(([key, value]) => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={value} 
-                    onChange={() => setExportOptions({...exportOptions, [key]: !value})}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  {key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}
-                </label>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button type="button" onClick={() => setIsExportModalOpen(false)} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-              <button onClick={handleExportCSV} style={{ padding: '0.625rem 1.25rem', background: '#111827', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Download size={18} /> Download CSV
-              </button>
-            </div>
-          </div>
+      <Modal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="Export Projects"
+        footer={
+          <>
+            <button onClick={() => setIsExportModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button onClick={handleExportCSV} className="btn-dark">
+              <Download size={16} /> Download CSV
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-500 mb-4">Select columns to include in the export.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(exportOptions) as (keyof typeof exportOptions)[]).map((key) => (
+            <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={exportOptions[key]}
+                onChange={() => setExportOptions((prev) => ({ ...prev, [key]: !prev[key] }))}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
+            </label>
+          ))}
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

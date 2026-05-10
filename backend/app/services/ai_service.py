@@ -1,249 +1,241 @@
-import json
-from datetime import datetime, timedelta, date
+import logging
+from datetime import date, datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
-from app.models.implementation import Implementation, ImplementationLog, ImplementationTask
-from app.models.task import Task, TaskStatus
-from app.models.client import Client
-from app.models.location import Location
-from app.models.user import User
+
 from app.core.config import settings
+from app.models.implementation import Implementation, ImplementationLog, ImplementationTask
+from app.models.location import Location
+from app.models.task import Task, TaskStatus
+from app.models.user import User
 
-def generate_weekly_executive_summary(db: Session, current_user: User, summary_type: str = 'implementation') -> str:
-    if not settings.GEMINI_API_KEY:
-        return "AI Summary is unavailable because GEMINI_API_KEY is not configured."
+logger = logging.getLogger(__name__)
 
+
+def _get_genai_client():
+    """Lazy import and initialise the Gemini client."""
     try:
         from google import genai
         from google.genai import types
+        return genai.Client(api_key=settings.GEMINI_API_KEY), types
     except ImportError:
-        return "AI SDK not installed. Please add google-genai to requirements and rebuild."
+        return None, None
 
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    context_str = ""
-    prompt = ""
 
-    if summary_type == 'implementation':
-        # Get all active or recently updated implementations
-        recent_logs = db.query(ImplementationLog).filter(
-            ImplementationLog.created_at >= seven_days_ago
-        ).all()
+def generate_weekly_executive_summary(
+    db: Session, current_user: User, summary_type: str = "implementation"
+) -> str:
+    if not settings.GEMINI_API_KEY:
+        return "AI Summary is unavailable: GEMINI_API_KEY is not configured."
 
+    client, types = _get_genai_client()
+    if client is None:
+        return "AI SDK not installed. Add google-genai to requirements and rebuild."
+
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+
+    if summary_type == "implementation":
+        recent_logs = (
+            db.query(ImplementationLog)
+            .filter(ImplementationLog.created_at >= seven_days_ago)
+            .all()
+        )
         active_imp_ids = {log.implementation_id for log in recent_logs}
-        active_imps = db.query(Implementation).filter(Implementation.id.in_(active_imp_ids)).all()
+        active_imps = (
+            db.query(Implementation).filter(Implementation.id.in_(active_imp_ids)).all()
+        )
 
         if not active_imps:
-            return "No significant activity recorded in the past 7 days for Software Implementations to generate a summary."
+            return "No significant activity in the past 7 days for Software Implementations."
 
         data_context = []
         for imp in active_imps:
-            imp_logs = [log for log in recent_logs if log.implementation_id == imp.id]
-            
-            # Fetch Milestones (Tasks) to give AI current state context
-            all_tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == imp.id).all()
-            completed_tasks = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
-            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
-            removed_tasks = [t.task_name for t in all_tasks if not t.is_active]
-            
-            log_texts = [f"- {log.created_at.strftime('%Y-%m-%d')}: {(log.user.name if log.user else 'System')} logged '{log.remarks}'" for log in imp_logs]
-            
-            project_data = (
-                f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%)\n"
-                f"POC: {imp.poc_1 or 'N/A'}, Version: {imp.uat_version or 'N/A'}\n"
-                f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
-                f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
-                f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
-                f"REMOVED/INACTIVE MILESTONES: {', '.join(removed_tasks) if removed_tasks else 'None'}\n"
-                f"Recent Log Updates (Past 7 Days):\n" + "\n".join(log_texts)
+            imp_logs = [l for l in recent_logs if l.implementation_id == imp.id]
+            all_tasks = (
+                db.query(ImplementationTask)
+                .filter(ImplementationTask.implementation_id == imp.id)
+                .all()
             )
-            data_context.append(project_data)
+            completed = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
+            pending = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
+            removed = [t.task_name for t in all_tasks if not t.is_active]
+            log_lines = [
+                f"- {l.created_at.strftime('%Y-%m-%d')}: "
+                f"{l.user.name if l.user else 'System'} logged '{l.remarks}'"
+                for l in imp_logs
+            ]
+            data_context.append(
+                f"Project: {imp.company_name} (Status: {imp.status}, "
+                f"Progress: {imp.current_percentage}%)\n"
+                f"Engineer: {imp.assigned_user.name if imp.assigned_user else 'Unassigned'}\n"
+                f"Completed Milestones: {', '.join(completed) or 'None'}\n"
+                f"Pending Milestones: {', '.join(pending) or 'None'}\n"
+                f"Removed Milestones: {', '.join(removed) or 'None'}\n"
+                f"Recent Logs:\n" + "\n".join(log_lines)
+            )
 
-        context_str = "\n\n".join(data_context)
-        prompt = f"""
-        You are an expert Executive Project Management Assistant for a Software Implementation department.
-        Your task is to generate a clean, concise, and professional "Weekly Executive Summary" based on the following project activity data from the last 7 days.
-        
-        CRITICAL INSTRUCTION: Pay close attention to the "CURRENT STATE (Milestones Completed)" and "PENDING MILESTONES" fields. A log might say "planning phase" from days ago, but the Milestones will tell you exactly what phase the project is ACTUALLY in right now. Do not get confused by old logs if milestones indicate further progress.
+        prompt = (
+            "You are an expert Executive Project Management Assistant.\n"
+            "Generate a concise 'Weekly Executive Summary' from the data below.\n\n"
+            "Focus on:\n"
+            "1. Overall Highlights\n"
+            "2. Risks and Bottlenecks\n"
+            "3. Action Items for Management\n\n"
+            f"Data:\n{chr(10).join(data_context)}\n\n"
+            "Output in clean Markdown. Do not invent data."
+        )
 
-        Focus on:
-        1. Overall Highlights (What went live, major progress jumps based on milestones and logs).
-        2. Risks and Bottlenecks (Projects that seem stuck or have logs indicating client/technical delays).
-        3. Action Items for Management.
-
-        Data Context:
-        {context_str}
-
-        Output the summary in clean Markdown format. Do not invent data. If the data is sparse, be brief. Ensure consistent analysis based on current milestones.
-        """
-        
-    elif summary_type == 'installation':
-        # Software / Installation Tracker
+    elif summary_type == "installation":
         tasks = db.query(Task).all()
-        
-        recent_completed = [t for t in tasks if t.status == TaskStatus.COMPLETED] # Ideally filter by completed_at, but we only have due_date
-        delayed_tasks = [t for t in tasks if t.due_date < date.today() and t.status != TaskStatus.COMPLETED]
-        in_progress = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
-        
         if not tasks:
-            return "No Installation tasks found to summarize."
-            
-        data_context = []
-        data_context.append(f"Total Delayed Tasks (Software/Installation): {len(delayed_tasks)}")
-        data_context.append(f"Tasks In Progress: {len(in_progress)}")
-        
-        if delayed_tasks:
-            data_context.append("Key Delayed Tasks:")
-            for t in delayed_tasks[:10]: # Top 10 delayed
-                client_name = t.location.client.name if t.location and t.location.client else "Unknown Client"
-                assignee = t.assignee.name if t.assignee else "Unassigned"
-                data_context.append(f"- Task: {t.name} (Client: {client_name}, Due: {t.due_date}, Assigned: {assignee}, Remarks: {t.remarks or 'None'})")
+            return "No Installation tasks found to summarise."
 
-        context_str = "\n".join(data_context)
-        prompt = f"""
-        You are an expert Executive Project Management Assistant for a Software Installation department.
-        Your task is to generate a clean, concise, and professional "Weekly Executive Summary" based on the following software installation data.
+        delayed = [t for t in tasks if t.due_date < date.today() and t.status != TaskStatus.COMPLETED]
+        in_progress = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
 
-        Focus on:
-        1. Overall Health (Count of delayed vs in progress tasks).
-        2. Key Risks and Bottlenecks (Focus heavily on the delayed tasks and their remarks/blockers).
-        3. Action Items for Management (e.g., follow up with specific unassigned tasks or specific engineers with multiple delays).
+        lines = [
+            f"Total Delayed Tasks: {len(delayed)}",
+            f"Tasks In Progress: {len(in_progress)}",
+        ]
+        for t in delayed[:10]:
+            client_name = (
+                t.location.client.name if t.location and t.location.client else "Unknown"
+            )
+            assignee = t.assignee.name if t.assignee else "Unassigned"
+            lines.append(
+                f"- {t.name} (Client: {client_name}, Due: {t.due_date}, "
+                f"Assigned: {assignee}, Remarks: {t.remarks or 'None'})"
+            )
 
-        Data Context:
-        {context_str}
-
-        Output the summary in clean Markdown format. Do not invent data.
-        """
-
+        prompt = (
+            "You are an expert Executive Project Management Assistant.\n"
+            "Generate a concise 'Weekly Executive Summary' for the installation tracker.\n\n"
+            "Focus on:\n"
+            "1. Overall Health\n"
+            "2. Key Risks and Bottlenecks\n"
+            "3. Action Items for Management\n\n"
+            f"Data:\n{chr(10).join(lines)}\n\n"
+            "Output in clean Markdown. Do not invent data."
+        )
     else:
         return "Invalid summary type requested."
 
-    # 2. Call Gemini
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    
     try:
         response = client.models.generate_content(
-            model='gemini-3.1-flash-lite-preview',
+            model=settings.GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.2, # Lower temperature for consistency and less hallucination
-            )
+            config=types.GenerateContentConfig(temperature=0.2),
         )
         return response.text
-    except Exception as e:
-        return f"Failed to generate AI summary. Error: {str(e)}"
+    except Exception as exc:
+        logger.exception("Gemini API call failed")
+        return f"Failed to generate AI summary: {exc}"
 
-def handle_chat_query(db: Session, current_user: User, query: str, summary_type: str, client_id: int = None, history: list = None) -> str:
+
+def handle_chat_query(
+    db: Session,
+    current_user: User,
+    query: str,
+    summary_type: str,
+    client_id: int | None = None,
+    history: list | None = None,
+) -> str:
     if not settings.GEMINI_API_KEY:
-        return "AI Chat is unavailable because GEMINI_API_KEY is not configured."
+        return "AI Chat is unavailable: GEMINI_API_KEY is not configured."
 
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError:
+    client, types = _get_genai_client()
+    if client is None:
         return "AI SDK not installed."
 
-    context_str = ""
-    
-    if summary_type == 'implementation':
+    if summary_type == "implementation":
         imp_query = db.query(Implementation)
         if client_id:
             imp_query = imp_query.filter(Implementation.id == client_id)
-            
-        active_imps = imp_query.all()
-        
-        if not active_imps:
-            return "I could not find any active software implementation projects for the selected criteria."
-            
-        data_context = []
-        for imp in active_imps:
-            all_tasks = db.query(ImplementationTask).filter(ImplementationTask.implementation_id == imp.id).all()
-            completed_tasks = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
-            pending_tasks = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
-            removed_tasks = [t.task_name for t in all_tasks if not t.is_active]
-            
-            recent_logs = db.query(ImplementationLog).filter(
-                ImplementationLog.implementation_id == imp.id
-            ).order_by(ImplementationLog.created_at.desc()).limit(10).all()
-            
-            log_texts = [f"- {log.created_at.strftime('%Y-%m-%d')}: {(log.user.name if log.user else 'System')} logged '{log.remarks}'" for log in recent_logs]
-            
-            project_data = (
-                f"Project: {imp.company_name} (Status: {imp.status}, Current Progress: {imp.current_percentage}%, UAT Version: {imp.uat_version or 'N/A'}, Prod Version: {imp.prod_version or 'N/A'})\n"
-                f"Engineer: {(imp.assigned_user.name if imp.assigned_user else 'Unassigned')}\n"
-                f"POC 1: {imp.poc_1 or 'N/A'}, POC 2: {imp.poc_2 or 'N/A'}, PO Date: {imp.po_date or 'N/A'}\n"
-                f"Timeline: {imp.start_date or 'N/A'} to {imp.expected_end_date or 'N/A'}\n"
-                f"CURRENT STATE (Milestones Completed): {', '.join(completed_tasks) if completed_tasks else 'None'}\n"
-                f"PENDING MILESTONES: {', '.join(pending_tasks) if pending_tasks else 'None'}\n"
-                f"REMOVED/INACTIVE MILESTONES: {', '.join(removed_tasks) if removed_tasks else 'None'}\n"
-                f"Last 10 Log Updates:\n" + "\n".join(log_texts)
-            )
-            data_context.append(project_data)
+        imps = imp_query.all()
 
-        context_str = "\n\n".join(data_context)
-        
-    elif summary_type == 'installation':
+        if not imps:
+            return "No active software implementation projects found for the selected criteria."
+
+        data_parts = []
+        for imp in imps:
+            all_tasks = (
+                db.query(ImplementationTask)
+                .filter(ImplementationTask.implementation_id == imp.id)
+                .all()
+            )
+            completed = [t.task_name for t in all_tasks if t.is_completed and t.is_active]
+            pending = [t.task_name for t in all_tasks if not t.is_completed and t.is_active]
+            recent_logs = (
+                db.query(ImplementationLog)
+                .filter(ImplementationLog.implementation_id == imp.id)
+                .order_by(ImplementationLog.created_at.desc())
+                .limit(10)
+                .all()
+            )
+            log_lines = [
+                f"- {l.created_at.strftime('%Y-%m-%d')}: "
+                f"{l.user.name if l.user else 'System'} logged '{l.remarks}'"
+                for l in recent_logs
+            ]
+            data_parts.append(
+                f"Project: {imp.company_name} (Status: {imp.status}, "
+                f"Progress: {imp.current_percentage}%)\n"
+                f"Engineer: {imp.assigned_user.name if imp.assigned_user else 'Unassigned'}\n"
+                f"Completed: {', '.join(completed) or 'None'}\n"
+                f"Pending: {', '.join(pending) or 'None'}\n"
+                f"Last 10 Logs:\n" + "\n".join(log_lines)
+            )
+        context_str = "\n\n".join(data_parts)
+
+    elif summary_type == "installation":
         task_query = db.query(Task)
-        
         if client_id:
             task_query = task_query.join(Location).filter(Location.client_id == client_id)
-            
         tasks = task_query.all()
-        
-        if not tasks:
-            return "I could not find any software installation tasks for the selected criteria."
-            
-        data_context = []
-        client_info_set = set()
-        
-        for t in tasks:
-            client = t.location.client if t.location else None
-            client_name = client.name if client else "Unknown Client"
-            
-            if client and client.id not in client_info_set:
-                client_info_set.add(client.id)
-                c_remarks = client.remarks or 'None'
-                data_context.append(f"\n[CLIENT INFO] Name: {client_name}, Client Notes: {c_remarks}\nTasks for {client_name}:")
-                
-            assignee = t.assignee.name if t.assignee else "Unassigned"
-            build_ver = t.build_version or 'N/A'
-            data_context.append(f"- Task: {t.name} (Status: {t.status.value}, Build Version: {build_ver}, Due: {t.due_date}, Assigned: {assignee}, Task Remarks: {t.remarks or 'None'})")
 
-        context_str = "\n".join(data_context)
+        if not tasks:
+            return "No installation tasks found for the selected criteria."
+
+        lines = []
+        seen_clients: set[int] = set()
+        for t in tasks:
+            c = t.location.client if t.location else None
+            if c and c.id not in seen_clients:
+                seen_clients.add(c.id)
+                lines.append(f"\n[CLIENT: {c.name}]")
+            assignee = t.assignee.name if t.assignee else "Unassigned"
+            lines.append(
+                f"- {t.name} (Status: {t.status.value}, Due: {t.due_date}, "
+                f"Assigned: {assignee}, Remarks: {t.remarks or 'None'})"
+            )
+        context_str = "\n".join(lines)
     else:
         return "Invalid tracker type."
 
-    history_context = ""
+    history_block = ""
     if history:
-        history_context = "=== PREVIOUS CONVERSATION HISTORY ===\n"
-        for msg in history[-5:]: # Keep last 5 turns to maintain context without overloading
+        history_block = "=== CONVERSATION HISTORY ===\n"
+        for msg in history[-5:]:
             role = "User" if msg.role == "user" else "AI"
-            history_context += f"{role}: {msg.content}\n"
-        history_context += "=====================================\n\n"
+            history_block += f"{role}: {msg.content}\n"
+        history_block += "============================\n\n"
 
-    prompt = f"""
-    You are an expert Data Analyst and Project Manager Assistant. 
-    A user has asked you a question regarding their project data.
+    prompt = (
+        "You are an expert Data Analyst and Project Manager Assistant.\n"
+        "Answer the user's question based ONLY on the system data below.\n\n"
+        f"=== SYSTEM DATA ===\n{context_str}\n===================\n\n"
+        f"{history_block}"
+        f"User's Question: {query}\n\n"
+        "Answer clearly and concisely in Markdown. "
+        "If the answer cannot be determined from the data, say so."
+    )
 
-    Here is the relevant system data you must base your answer on:
-    === SYSTEM DATA ===
-    {context_str}
-    ===================
-
-    {history_context}
-    User's Question: {query}
-
-    Please answer the user's question clearly and concisely based ONLY on the provided system data. Do not make up information.
-    If the answer cannot be determined from the data, politely say so.
-    Output your response in Markdown format.
-    """
-
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    
     try:
         response = client.models.generate_content(
-            model='gemini-3.1-flash-lite-preview',
+            model=settings.GEMINI_MODEL,
             contents=prompt,
         )
         return response.text
-    except Exception as e:
-        return f"Failed to get an answer from AI. Error: {str(e)}"
-
+    except Exception as exc:
+        logger.exception("Gemini chat API call failed")
+        return f"Failed to get an answer from AI: {exc}"

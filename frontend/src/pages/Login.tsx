@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
-import { User, Lock, Eye, EyeOff, TrendingUp, Activity, Zap, CheckCircle2, Users } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
-import './Login.css';
+import type { AuthUser } from '../types/api';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -12,228 +12,205 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-  const [progressValue, setProgressValue] = useState(0);
-  
-  const login = useAuthStore((state) => state.login);
+  const [progress, setProgress] = useState(0);
+
+  const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
+  // Animate the progress counter on mount
   useEffect(() => {
-    setIsMounted(true);
-    // Animate the percentage counter
-    const duration = 1500;
     const target = 95;
-    const startTime = performance.now();
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease out quad
-      const easedProgress = progress * (2 - progress);
-      setProgressValue(Math.floor(easedProgress * target));
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
+    const duration = 1500;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const p = Math.min(elapsed / duration, 1);
+      const eased = p * (2 - p);
+      setProgress(Math.floor(eased * target));
+      if (p < 1) requestAnimationFrame(tick);
     };
-
-    requestAnimationFrame(animate);
+    requestAnimationFrame(tick);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-
     try {
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
-
-      const response = await api.post('/auth/login', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      const res = await api.post<AuthUser>('/auth/login', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
-      
-      const user = response.data;
-      
-      // Token is now in HttpOnly cookie, we just pass empty string for token
-      login('', user);
+      login(res.data);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid credentials or server error.');
+    } catch {
+      setError('Invalid credentials. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <motion.div 
-      className="login-page"
+    <motion.div
+      className="min-h-screen bg-gray-900 flex items-center justify-center p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.4 }}
     >
-      <div className="login-background-overlay"></div>
-      
-      <div className="login-content">
-        <div className="login-left">
-          <div className="brand-section">
-            <h1 className="brand-title">CUSTOMER DATA<br />MANAGEMENT<br />SYSTEM</h1>
-            <p className="brand-subtitle">Powered by AI-driven insights and robust security.</p>
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+
+        {/* Left — Branding */}
+        <div className="hidden lg:block">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+              <Shield size={22} className="text-white" />
+            </div>
+            <span className="text-white font-bold text-xl">CDMS</span>
+          </div>
+          <h1 className="text-4xl font-bold text-white leading-tight mb-4">
+            Customer Data<br />Management<br />System
+          </h1>
+          <p className="text-gray-400 text-base mb-10">
+            AI-powered insights. Robust security. Full project visibility.
+          </p>
+
+          {/* Stats widget */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider">
+              System Overview
+            </p>
+            {[
+              { label: 'Implementation Tracker', value: 85 },
+              { label: 'Installation Tracker', value: 92 },
+              { label: 'Active Users', value: 100 },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>{label}</span>
+                  <span>{value}%</span>
+                </div>
+                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-blue-500 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${value}%` }}
+                    transition={{ duration: 1.2, delay: 0.3 }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            {/* Donut */}
+            <div className="flex items-center gap-4 pt-2">
+              <div className="relative w-16 h-16 flex-shrink-0">
+                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3" />
+                  <motion.circle
+                    cx="18" cy="18" r="15.9" fill="none"
+                    stroke="#3b82f6" strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray="100"
+                    initial={{ strokeDashoffset: 100 }}
+                    animate={{ strokeDashoffset: 100 - progress }}
+                    transition={{ duration: 1.5 }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-white text-xs font-bold">{progress}%</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold">CDMS Progress</p>
+                <p className="text-gray-400 text-xs">Overall completion</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="login-center">
-          <div className="login-card-v2">
-            <div className="card-corner-top-left"></div>
-            <div className="card-corner-bottom-right"></div>
-            
+        {/* Right — Login form */}
+        <div className="w-full max-w-sm mx-auto">
+          <div className="bg-white rounded-2xl shadow-2xl p-8">
+            <div className="flex items-center gap-2 mb-6 lg:hidden">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Shield size={16} className="text-white" />
+              </div>
+              <span className="font-bold text-gray-900">CDMS</span>
+            </div>
 
-            {error && <div className="login-error">{error}</div>}
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
+            <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>
 
-            <form onSubmit={handleLogin} className="login-form-v2">
-              <div className="form-group-v2">
-                <label>Username</label>
-                <div className="input-wrapper">
-                  <User size={18} className="input-icon" />
+            {error && (
+              <div
+                className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4"
+                role="alert"
+              >
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} noValidate>
+              <div className="form-group">
+                <label htmlFor="username" className="label">Username</label>
+                <div className="relative">
+                  <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                   <input
+                    id="username"
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Username"
+                    placeholder="Enter your username"
                     required
+                    autoComplete="username"
+                    className="input pl-9"
+                    aria-required="true"
                   />
                 </div>
               </div>
 
-              <div className="form-group-v2">
-                <label>Password</label>
-                <div className="input-wrapper">
-                  <Lock size={18} className="input-icon" />
+              <div className="form-group">
+                <label htmlFor="password" className="label">Password</label>
+                <div className="relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
                   <input
-                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
+                    placeholder="Enter your password"
                     required
+                    autoComplete="current-password"
+                    className="input pl-9 pr-10"
+                    aria-required="true"
                   />
-                  <button 
-                    type="button" 
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </div>
 
-              <button type="submit" disabled={isLoading} className="login-button-v2">
-                {isLoading ? 'Processing...' : 'Login'}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="btn-primary w-full justify-center mt-2 py-2.5"
+              >
+                {isLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  'Sign in'
+                )}
               </button>
             </form>
-          </div>
-        </div>
-
-        <div className="login-right">
-          <div className="widget line-widget">
-            <div className="widget-header">
-              <TrendingUp size={16} className="widget-icon" />
-              <span>Engineers Activity</span>
-            </div>
-            <div className="widget-graph">
-              <svg viewBox="0 0 200 80" className={`line-graph ${isMounted ? 'animate' : ''}`} preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-                  </linearGradient>
-                  <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="100%" stopColor="#60a5fa" />
-                  </linearGradient>
-                </defs>
-                <path 
-                  className="graph-path"
-                  d="M0,60 C20,60 40,20 60,30 C80,40 100,10 120,20 C140,30 160,10 180,15 L200,10" 
-                  fill="none" 
-                  stroke="url(#lineGradient)" 
-                  strokeWidth="2.5" 
-                  strokeLinecap="round"
-                />
-                <path 
-                  className="graph-area"
-                  d="M0,60 C20,60 40,20 60,30 C80,40 100,10 120,20 C140,30 160,10 180,15 L200,10 L200,80 L0,80 Z" 
-                  fill="url(#areaGradient)" 
-                />
-                <circle cx="60" cy="30" r="3" fill="#3b82f6" className="graph-dot" />
-                <circle cx="120" cy="20" r="3" fill="#3b82f6" className="graph-dot" />
-                <circle cx="180" cy="15" r="3" fill="#60a5fa" className="graph-dot" />
-              </svg>
-            </div>
-          </div>
-          
-          <div className="widget system-widget">
-            <div className="widget-header">
-              <Activity size={16} className="widget-icon" />
-              <span>Project Statistics</span>
-            </div>
-            <div className="status-item">
-              <div className="status-label">
-                <Zap size={12} />
-                <span>Implementation</span>
-              </div>
-              <div className="progress-bg">
-                <div 
-                  className="progress-fill" 
-                  style={{width: isMounted ? '85%' : '0%'}}
-                ></div>
-              </div>
-            </div>
-            <div className="status-item">
-              <div className="status-label">
-                <CheckCircle2 size={12} />
-                <span>Installation</span>
-              </div>
-              <div className="progress-bg">
-                <div 
-                  className="progress-fill" 
-                  style={{width: isMounted ? '92%' : '0%'}}
-                ></div>
-              </div>
-            </div>
-            <div className="status-item">
-              <div className="status-label">
-                <Users size={12} />
-                <span>Active Users</span>
-              </div>
-              <div className="progress-bg">
-                <div 
-                  className="progress-fill" 
-                  style={{width: isMounted ? '100%' : '0%'}}
-                ></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="widget circle-widget">
-            <div className="widget-header">
-              <Activity size={16} className="widget-icon" />
-              <span>CDMS Progress</span>
-            </div>
-            <div className="donut-container">
-              <svg viewBox="0 0 36 36" className="donut">
-                <path className="donut-ring" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                <path 
-                  className="donut-segment" 
-                  strokeDasharray={`${progressValue}, 100`}
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
-                />
-              </svg>
-              <div className="donut-text">
-                <span className="percentage">{progressValue}%</span>
-                <span className="label">COMPLETE</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

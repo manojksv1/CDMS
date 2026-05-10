@@ -1,40 +1,122 @@
-:root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light;
-  color: #111827;
-  background-color: #f3f4f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
 }
 
-body {
-  margin: 0;
-  display: block;
-  min-width: 320px;
-  min-height: 100vh;
-}
+@layer components {
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-blue-700 text-white hover:bg-blue-800 focus:ring-blue-500;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-gray-400;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-600 hover:bg-gray-100 focus:ring-gray-400 px-2;
+  }
+  .btn-dark {
+    @apply btn bg-gray-900 text-white hover:bg-gray-800 focus:ring-gray-700;
+  }
 
-* {
-  box-sizing: border-box;
-}
+  /* Form elements */
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all;
+  }
+  .label {
+    @apply block text-sm font-semibold text-gray-700 mb-1;
+  }
+  .form-group {
+    @apply mb-4;
+  }
 
-h1, h2, h3, h4, h5, h6 {
-  margin-top: 0;
-}
+  /* Cards */
+  .card {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm;
+  }
+  .card-header {
+    @apply px-5 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl;
+  }
 
-/* Global Input & Select styling to prevent invisible text */
-input, select, textarea {
-  color: #111827;
-  background-color: #ffffff;
-}
+  /* Table */
+  .table-wrapper {
+    @apply bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden;
+  }
+  .table {
+    @apply w-full text-left border-collapse;
+  }
+  .table thead {
+    @apply bg-gray-50 border-b border-gray-200;
+  }
+  .table th {
+    @apply px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide;
+  }
+  .table td {
+    @apply px-4 py-3 text-sm text-gray-700 border-b border-gray-100;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table tbody tr:hover {
+    @apply bg-gray-50;
+  }
 
-input:focus, select:focus, textarea:focus {
-  outline: 2px solid #3f83f8;
-  outline-offset: -1px;
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-green  { @apply badge bg-emerald-100 text-emerald-800; }
+  .badge-blue   { @apply badge bg-blue-100 text-blue-800; }
+  .badge-red    { @apply badge bg-red-100 text-red-800; }
+  .badge-yellow { @apply badge bg-amber-100 text-amber-800; }
+  .badge-gray   { @apply badge bg-gray-100 text-gray-700; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4;
+  }
+  .modal-box {
+    @apply bg-white rounded-xl w-full shadow-xl;
+  }
+  .modal-header {
+    @apply flex items-center justify-between p-6 border-b border-gray-200;
+  }
+  .modal-body {
+    @apply p-6;
+  }
+  .modal-footer {
+    @apply flex justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl;
+  }
+
+  /* Page header */
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-bold text-gray-900;
+  }
+  .page-subtitle {
+    @apply text-sm text-gray-500 mt-0.5;
+  }
+
+  /* Status pill */
+  .status-live       { @apply badge-green; }
+  .status-completed  { @apply badge-blue; }
+  .status-inprogress { @apply badge-gray; }
+  .status-onhold     { @apply badge-yellow; }
+  .status-blocked    { @apply badge-red; }
 }

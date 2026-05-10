@@ -1,59 +1,97 @@
-from sqlalchemy.orm import Session
-from app.models.user import User
-from app.schemas.user import UserCreate
-from app.core.security import get_password_hash
+import logging
+from datetime import datetime, timezone
 
-def get_user_by_name(db: Session, name: str):
+from sqlalchemy.orm import Session
+
+from app.core.exceptions import ConflictError, NotFoundError
+from app.core.security import get_password_hash
+from app.models.user import User
+from app.schemas.user import UserCreate, UserUpdate
+
+logger = logging.getLogger(__name__)
+
+
+def get_user_by_name(db: Session, name: str) -> User | None:
     return db.query(User).filter(User.name == name).first()
 
-def get_user(db: Session, user_id: int):
+
+def get_user(db: Session, user_id: int) -> User | None:
     return db.query(User).filter(User.id == user_id).first()
 
-def create_user(db: Session, user: UserCreate):
-    hashed_password = get_password_hash(user.password)
+
+def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
+    return db.query(User).offset(skip).limit(limit).all()
+
+
+def create_user(db: Session, user: UserCreate) -> User:
+    if get_user_by_name(db, user.name):
+        raise ConflictError(f"Username '{user.name}' is already registered")
+
     db_user = User(
-        name=user.name, 
-        role=user.role, 
+        name=user.name,
+        role=user.role,
         software_access=user.software_access,
         timezone=user.timezone,
-        hashed_password=hashed_password
+        hashed_password=get_password_hash(user.password),
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    logger.info("Created user id=%s name=%s role=%s", db_user.id, db_user.name, db_user.role)
     return db_user
 
-def delete_user(db: Session, user_id: int):
+
+def update_user(db: Session, user_id: int, user_update: UserUpdate) -> User:
     db_user = get_user(db, user_id)
-    if db_user:
-        db.delete(db_user)
-        db.commit()
+    if not db_user:
+        raise NotFoundError(f"User id={user_id} not found")
+
+    # Use model_dump with exclude_unset so only explicitly provided fields are updated.
+    # This correctly handles clearing a field to None vs not providing it at all.
+    update_data = user_update.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        if field == "password":
+            db_user.hashed_password = get_password_hash(value)
+        else:
+            setattr(db_user, field, value)
+
+    db.commit()
+    db.refresh(db_user)
+    logger.info("Updated user id=%s fields=%s", user_id, list(update_data.keys()))
     return db_user
 
-def update_user_password(db: Session, user_id: int, new_password: str):
+
+def update_user_password(db: Session, user_id: int, new_password: str) -> User:
     db_user = get_user(db, user_id)
-    if db_user:
-        db_user.hashed_password = get_password_hash(new_password)
-        db.commit()
-        db.refresh(db_user)
+    if not db_user:
+        raise NotFoundError(f"User id={user_id} not found")
+
+    db_user.hashed_password = get_password_hash(new_password)
+    db.commit()
+    db.refresh(db_user)
     return db_user
 
-def update_user(db: Session, user_id: int, user_update: any):
+
+def invalidate_all_sessions(db: Session, user_id: int) -> User:
+    """Set last_logout to now, invalidating all existing tokens for this user."""
     db_user = get_user(db, user_id)
-    if db_user:
-        if user_update.name:
-            db_user.name = user_update.name
-        if user_update.role:
-            db_user.role = user_update.role
-        if user_update.software_access:
-            db_user.software_access = user_update.software_access
-        if user_update.timezone:
-            db_user.timezone = user_update.timezone
-        if user_update.password:
-            db_user.hashed_password = get_password_hash(user_update.password)
-        db.commit()
-        db.refresh(db_user)
+    if not db_user:
+        raise NotFoundError(f"User id={user_id} not found")
+
+    db_user.last_logout = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(db_user)
+    logger.info("Invalidated all sessions for user id=%s", user_id)
     return db_user
 
-def get_users(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(User).offset(skip).limit(limit).all()
+
+def delete_user(db: Session, user_id: int) -> User:
+    db_user = get_user(db, user_id)
+    if not db_user:
+        raise NotFoundError(f"User id={user_id} not found")
+
+    db.delete(db_user)
+    db.commit()
+    logger.info("Deleted user id=%s", user_id)
+    return db_user

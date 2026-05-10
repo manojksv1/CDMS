@@ -1,53 +1,68 @@
-from fastapi import Depends, HTTPException, status, Request
-from jose import JWTError, jwt
+import logging
+
+from fastapi import Depends, Request
+from jose import JWTError
 from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.security import decode_token, is_token_blacklisted
+from app.models.user import User, UserRole
 from app.schemas.user import TokenData
 from app.services import user_service
-from app.models.user import UserRole
 
-def get_current_user(request: Request, db: Session = Depends(get_db)):
+logger = logging.getLogger(__name__)
+
+_CREDENTIALS_ERROR = UnauthorizedError("Could not validate credentials")
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE_NAME)
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     if not token:
-        raise credentials_exception
-        
+        raise _CREDENTIALS_ERROR
+
+    if is_token_blacklisted(token):
+        raise _CREDENTIALS_ERROR
+
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if payload.get("type") != "access":
-            raise credentials_exception
-            
-        user_id: str = payload.get("sub")
-        role: str = payload.get("role")
-        if user_id is None or role is None:
-            raise credentials_exception
-        token_data = TokenData(id=int(user_id), role=UserRole(role.upper()))
+        payload = decode_token(token)
     except JWTError:
-        raise credentials_exception
-    
+        raise _CREDENTIALS_ERROR
+
+    if payload.get("type") != "access":
+        raise _CREDENTIALS_ERROR
+
+    user_id: str | None = payload.get("sub")
+    role: str | None = payload.get("role")
+    if user_id is None or role is None:
+        raise _CREDENTIALS_ERROR
+
+    try:
+        token_data = TokenData(id=int(user_id), role=UserRole(role.upper()))
+    except (ValueError, KeyError):
+        raise _CREDENTIALS_ERROR
+
     user = user_service.get_user(db, user_id=token_data.id)
     if user is None:
-        raise credentials_exception
-    
-    # Check if token was issued before the last logout (session invalidation)
-    iat = payload.get("iat")
+        raise _CREDENTIALS_ERROR
+
+    # Invalidate tokens issued before the user's last logout
+    iat: int | None = payload.get("iat")
     if iat and user.last_logout:
         if iat < int(user.last_logout.timestamp()):
-            raise credentials_exception
-            
+            raise _CREDENTIALS_ERROR
+
     return user
 
-def get_current_active_admin(current_user = Depends(get_current_user)):
+
+def get_current_active_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+        raise ForbiddenError("Admin privileges required")
     return current_user
 
-def get_current_manager_or_admin(current_user = Depends(get_current_user)):
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
-        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+
+def get_current_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        raise ForbiddenError("Manager or Admin privileges required")
     return current_user

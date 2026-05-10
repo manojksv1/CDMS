@@ -2,35 +2,41 @@
 
 set -e
 
-# Wait for the database to be ready
 echo "Waiting for database..."
-until pg_isready -h db -p 5432 -U cdms_user; do
+until pg_isready -h db -p 5432 -U "${POSTGRES_USER:-cdms_user}"; do
   echo "Database is unavailable - sleeping"
   sleep 1
 done
 
-echo "Database is up - executing migrations"
+echo "Database is up - running migrations"
 alembic upgrade head
 
-echo "Checking/Creating default admin user..."
+echo "Ensuring default admin user exists..."
 python -c "
 from app.core.database import SessionLocal
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, SoftwareAccess
 from app.core.security import get_password_hash
+
 db = SessionLocal()
 try:
     user = db.query(User).filter(User.name == 'admin').first()
     if not user:
-        db.add(User(name='admin', role=UserRole.ADMIN, hashed_password=get_password_hash('admin123')))
+        db.add(User(
+            name='admin',
+            role=UserRole.ADMIN,
+            software_access=SoftwareAccess.BOTH,
+            hashed_password=get_password_hash('admin123'),
+            timezone='UTC',
+        ))
         db.commit()
-        print('Admin user created successfully.')
+        print('Default admin user created.')
     else:
         print('Admin user already exists.')
 except Exception as e:
-    print(f'Error creating admin: {e}')
+    print(f'Error ensuring admin user: {e}')
+    db.rollback()
 finally:
     db.close()
 "
 
-# Execute the passed command (usually uvicorn)
 exec "$@"

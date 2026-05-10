@@ -1,281 +1,300 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import api from '../api';
 import { useNotificationStore } from '../store/notificationStore';
-import { 
-  Plus, 
-  Trash2, 
-  AlertCircle,
-  GripVertical,
-  Edit2,
-  Layout,
-  CheckCircle2
-} from 'lucide-react';
+import { Plus, Trash2, AlertCircle, GripVertical, Edit2, Layout, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import ConfirmModal from '../components/ConfirmModal';
+import Modal from '../components/Modal';
+import { Skeleton } from '../components/Skeleton';
+import type { MilestoneSection, GlobalMilestone } from '../types/api';
 
 const MilestoneTemplate: React.FC = () => {
-  const [sections, setSections] = useState<any[]>([]);
+  const [sections, setSections] = useState<MilestoneSection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [editingSection, setEditingSection] = useState<any>(null);
-  const [editingTask, setEditingTask] = useState<any>(null);
-
-  // Confirm Modal State
+  const [editingSection, setEditingSection] = useState<MilestoneSection | null>(null);
+  const [editingTask, setEditingTask] = useState<GlobalMilestone | null>(null);
+  const [sectionForm, setSectionForm] = useState({ name: '', weight: 0 });
+  const [taskForm, setTaskForm] = useState({ task_name: '', weight: 0, section_id: 0 });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {},
-    type: 'danger' as 'danger' | 'warning' | 'info',
-    confirmText: 'Delete'
+    isOpen: false, title: '', message: '', onConfirm: () => {},
+    type: 'danger' as 'danger' | 'warning' | 'info', confirmText: 'Delete',
   });
 
-  const currentUser = useAuthStore(state => state.user);
+  const currentUser = useAuthStore((s) => s.user);
+  const showNotification = useNotificationStore((s) => s.show);
 
-  const showNotification = useNotificationStore(state => state.show);
-
-  const [sectionFormData, setSectionFormData] = useState({ name: '', weight: 0 });
-  const [taskFormData, setTaskFormData] = useState({ task_name: '', weight: 0, section_id: 0 });
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/implementations/sections/');
+      const res = await api.get<MilestoneSection[]>('/implementations/sections/');
       setSections(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    } catch { /* handled */ } finally { setIsLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       if (editingSection) {
-        await api.patch(`/implementations/sections/${editingSection.id}`, sectionFormData);
-        showNotification("Section updated", "success");
+        await api.patch(`/implementations/sections/${editingSection.id}`, sectionForm);
+        showNotification('Section updated', 'success');
       } else {
-        await api.post('/implementations/sections/', sectionFormData);
-        showNotification("Section created", "success");
+        await api.post('/implementations/sections/', sectionForm);
+        showNotification('Section created', 'success');
       }
       setIsSectionModalOpen(false);
       setEditingSection(null);
-      setSectionFormData({ name: '', weight: 0 });
+      setSectionForm({ name: '', weight: 0 });
       fetchData();
-    } catch (err) { console.error(err); }
-  };
-
-  const deleteSection = (id: number) => {
-    setConfirmConfig({
-      isOpen: true,
-      title: 'Delete Section',
-      message: 'Deleting a section will delete all tasks inside it. Continue?',
-      type: 'danger',
-      confirmText: 'Delete Section',
-      onConfirm: async () => {
-        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-        try {
-          await api.delete(`/implementations/sections/${id}`);
-          fetchData();
-        } catch (err) { console.error(err); }
-      }
-    });
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
   };
 
   const handleTaskSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       if (editingTask) {
-        await api.patch(`/implementations/templates/${editingTask.id}`, taskFormData);
-        showNotification("Task updated", "success");
+        await api.patch(`/implementations/templates/${editingTask.id}`, taskForm);
+        showNotification('Task updated', 'success');
       } else {
-        await api.post('/implementations/templates/', taskFormData);
-        showNotification("Task added to section", "success");
+        await api.post('/implementations/templates/', taskForm);
+        showNotification('Task added', 'success');
       }
       setIsTaskModalOpen(false);
       setEditingTask(null);
       fetchData();
-    } catch (err) { console.error(err); }
+    } catch { /* handled */ } finally { setIsSubmitting(false); }
+  };
+
+  const deleteSection = (id: number) => {
+    setConfirmConfig({
+      isOpen: true, title: 'Delete Section', type: 'danger', confirmText: 'Delete Section',
+      message: 'Deleting this section will also delete all tasks inside it. Continue?',
+      onConfirm: async () => {
+        setConfirmConfig((p) => ({ ...p, isOpen: false }));
+        try { await api.delete(`/implementations/sections/${id}`); fetchData(); } catch { /* handled */ }
+      },
+    });
   };
 
   const deleteTask = (id: number) => {
     setConfirmConfig({
-      isOpen: true,
-      title: 'Remove Task',
-      message: 'Remove this task? New projects will no longer include this milestone.',
-      type: 'danger',
-      confirmText: 'Remove Task',
+      isOpen: true, title: 'Remove Task', type: 'danger', confirmText: 'Remove Task',
+      message: 'New projects will no longer include this milestone. Continue?',
       onConfirm: async () => {
-        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-        try {
-          await api.delete(`/implementations/templates/${id}`);
-          fetchData();
-        } catch (err) { console.error(err); }
-      }
+        setConfirmConfig((p) => ({ ...p, isOpen: false }));
+        try { await api.delete(`/implementations/templates/${id}`); fetchData(); } catch { /* handled */ }
+      },
     });
   };
 
-  const openTaskModal = (sectionId: number, task?: any) => {
+  const openTaskModal = (sectionId: number, task?: GlobalMilestone) => {
     if (task) {
       setEditingTask(task);
-      setTaskFormData({ task_name: task.task_name, weight: task.weight, section_id: sectionId });
+      setTaskForm({ task_name: task.task_name, weight: task.weight, section_id: sectionId });
     } else {
       setEditingTask(null);
-      setTaskFormData({ task_name: '', weight: 0, section_id: sectionId });
+      setTaskForm({ task_name: '', weight: 0, section_id: sectionId });
     }
     setIsTaskModalOpen(true);
   };
 
-  const totalProjectWeight = sections.reduce((sum, s) => sum + s.weight, 0);
+  const totalWeight = sections.reduce((s, sec) => s + sec.weight, 0);
 
-  if (currentUser?.role === 'ENGINEER') return <div className="p-10">Access Denied</div>;
+  if (currentUser?.role === 'ENGINEER') {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Access denied. Admins and Managers only.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <ConfirmModal 
-        isOpen={confirmConfig.isOpen}
-        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={confirmConfig.onConfirm}
-        title={confirmConfig.title}
-        message={confirmConfig.message}
-        type={confirmConfig.type}
-        confirmText={confirmConfig.confirmText}
-      />
+    <div className="max-w-5xl mx-auto">
+      <ConfirmModal {...confirmConfig} onClose={() => setConfirmConfig((p) => ({ ...p, isOpen: false }))} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="page-header">
         <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>Implementation Template Editor</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>Define main milestones and their sub-tasks with percentage weights.</p>
+          <h1 className="page-title">Implementation Template Editor</h1>
+          <p className="page-subtitle">Define milestones and sub-tasks with percentage weights.</p>
         </div>
-        <button 
-          onClick={() => { setEditingSection(null); setSectionFormData({name:'', weight:0}); setIsSectionModalOpen(true); }}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#111827', color: 'white', padding: '0.625rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+        <button
+          onClick={() => { setEditingSection(null); setSectionForm({ name: '', weight: 0 }); setIsSectionModalOpen(true); }}
+          className="btn-dark"
         >
-          <Plus size={18} /> New Main Milestone
+          <Plus size={16} /> New Milestone
         </button>
       </div>
 
-      {/* Global Status */}
-      <div style={{ background: totalProjectWeight === 100 ? '#ecfdf5' : '#fff7ed', border: '1px solid', borderColor: totalProjectWeight === 100 ? '#10b981' : '#f97316', padding: '1rem 1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        {totalProjectWeight === 100 ? <CheckCircle2 size={24} color="#059669" /> : <AlertCircle size={24} color="#d97706" />}
-        <div style={{ flex: 1 }}>
-          <span style={{ fontWeight: 700, color: totalProjectWeight === 100 ? '#065f46' : '#9a3412' }}>Total Project Weight: {totalProjectWeight}%</span>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: totalProjectWeight === 100 ? '#047857' : '#c2410c' }}>
-            {totalProjectWeight === 100 ? "Valid 100% configuration." : `The sum of all main milestones must be exactly 100% (Current: ${totalProjectWeight}%).`}
+      {/* Weight status */}
+      <div className={`flex items-center gap-3 px-5 py-3 rounded-xl mb-6 border ${
+        totalWeight === 100
+          ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+          : 'bg-amber-50 border-amber-300 text-amber-800'
+      }`}>
+        {totalWeight === 100
+          ? <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
+          : <AlertCircle size={20} className="text-amber-500 flex-shrink-0" />
+        }
+        <div>
+          <span className="font-bold">Total Project Weight: {totalWeight}%</span>
+          <p className="text-xs mt-0.5">
+            {totalWeight === 100
+              ? 'Valid 100% configuration.'
+              : `All milestones must sum to exactly 100% (current: ${totalWeight}%).`}
           </p>
         </div>
       </div>
 
-      {isLoading ? <div className="text-center p-20">Loading master template...</div> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {sections.map(section => {
-            const tasksWeight = section.milestones.reduce((sum: number, m: any) => sum + m.weight, 0);
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {sections.map((section) => {
+            const tasksWeight = section.milestones.reduce((s, m) => s + m.weight, 0);
             const isBalanced = Math.abs(tasksWeight - section.weight) < 0.01;
 
             return (
-              <div key={section.id} style={{ background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                {/* Section Header */}
-                <div style={{ padding: '1.25rem', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Layout size={18} color="#1a56db" />
-                      <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>{section.name}</h2>
+              <div key={section.id} className="card overflow-hidden">
+                {/* Section header */}
+                <div className="card-header flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Layout size={16} className="text-blue-600" aria-hidden="true" />
+                      <h2 className="font-bold text-gray-900">{section.name}</h2>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.4rem' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#1a56db', background: '#eff6ff', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Target: {section.weight}%</span>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: isBalanced ? '#059669' : '#d97706' }}>Sub-tasks: {tasksWeight}%</span>
+                    <div className="flex gap-3 mt-1">
+                      <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                        Target: {section.weight}%
+                      </span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded ${isBalanced ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'}`}>
+                        Sub-tasks: {tasksWeight}%
+                      </span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    <button onClick={() => { setEditingSection(section); setSectionFormData({name: section.name, weight: section.weight}); setIsSectionModalOpen(true); }} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '0.4rem' }}><Edit2 size={16} /></button>
-                    <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', color: '#fecaca', cursor: 'pointer', padding: '0.4rem' }}><Trash2 size={16} /></button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { setEditingSection(section); setSectionForm({ name: section.name, weight: section.weight }); setIsSectionModalOpen(true); }}
+                      className="btn-ghost" aria-label={`Edit section ${section.name}`}
+                    >
+                      <Edit2 size={15} />
+                    </button>
+                    <button onClick={() => deleteSection(section.id)} className="btn-ghost text-red-500 hover:bg-red-50" aria-label={`Delete section ${section.name}`}>
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Tasks List */}
-                <div style={{ padding: '1rem' }}>
-                  {section.milestones.map((task: any) => (
-                    <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', borderRadius: '8px', border: '1px solid #f3f4f6', marginBottom: '0.5rem' }}>
-                      <GripVertical size={16} color="#d1d5db" />
-                      <div style={{ flex: 1, fontSize: '0.875rem', fontWeight: 500 }}>{task.task_name}</div>
-                      <div style={{ fontWeight: 700, color: '#4b5563', fontSize: '0.875rem' }}>{task.weight}%</div>
-                      <div style={{ display: 'flex', gap: '0.1rem' }}>
-                         <button onClick={() => openTaskModal(section.id, task)} style={{ background: 'none', border: 'none', color: '#1a56db', cursor: 'pointer', padding: '0.3rem' }}><Edit2 size={14} /></button>
-                         <button onClick={() => deleteTask(task.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.3rem' }}><Trash2 size={14} /></button>
+                {/* Tasks */}
+                <div className="p-4 space-y-2">
+                  {section.milestones.map((task) => (
+                    <div key={task.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                      <GripVertical size={15} className="text-gray-300 flex-shrink-0" aria-hidden="true" />
+                      <span className="flex-1 text-sm font-medium text-gray-800">{task.task_name}</span>
+                      <span className="text-sm font-bold text-gray-500">{task.weight}%</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => openTaskModal(section.id, task)} className="btn-ghost" aria-label={`Edit task ${task.task_name}`}>
+                          <Edit2 size={13} />
+                        </button>
+                        <button onClick={() => deleteTask(task.id)} className="btn-ghost text-red-500 hover:bg-red-50" aria-label={`Delete task ${task.task_name}`}>
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </div>
                   ))}
-                  <button 
+                  <button
                     onClick={() => openTaskModal(section.id)}
-                    style={{ width: '100%', padding: '0.75rem', background: 'transparent', border: '2px dashed #e5e7eb', borderRadius: '8px', color: '#6b7280', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                    className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 font-medium hover:border-gray-300 hover:text-gray-700 transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Plus size={14} /> Add Sub-task
                   </button>
                 </div>
-                
+
                 {!isBalanced && (
-                   <div style={{ padding: '0.5rem 1rem', background: '#fff7ed', color: '#c2410c', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                     <AlertCircle size={12} /> Tasks sum ({tasksWeight}%) does not match section target ({section.weight}%)
-                   </div>
+                  <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 flex items-center gap-2 text-xs text-amber-700 font-medium">
+                    <AlertCircle size={12} />
+                    Tasks sum ({tasksWeight}%) ≠ section target ({section.weight}%)
+                  </div>
                 )}
               </div>
             );
           })}
+
+          {sections.length === 0 && (
+            <div className="text-center py-16 text-gray-400">
+              <Layout size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No milestones yet</p>
+              <p className="text-sm mt-1">Create your first milestone to get started.</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Section Modal */}
-      {isSectionModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '450px', padding: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>{editingSection ? 'Edit Main Milestone' : 'New Main Milestone'}</h2>
-            <form onSubmit={handleSectionSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Milestone Name</label>
-                <input required type="text" value={sectionFormData.name} onChange={e => setSectionFormData({...sectionFormData, name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} placeholder="e.g. Contentverse Installation" />
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Total Weight (%)</label>
-                <input required type="number" step="0.1" value={sectionFormData.weight} onChange={e => setSectionFormData({...sectionFormData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setIsSectionModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#111827', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>{editingSection ? 'Update' : 'Create'}</button>
-              </div>
-            </form>
+      <Modal isOpen={isSectionModalOpen} onClose={() => setIsSectionModalOpen(false)}
+        title={editingSection ? 'Edit Milestone' : 'New Milestone'}
+        footer={
+          <>
+            <button onClick={() => setIsSectionModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="section-form" type="submit" disabled={isSubmitting} className="btn-dark">
+              {isSubmitting ? 'Saving…' : editingSection ? 'Update' : 'Create'}
+            </button>
+          </>
+        }
+      >
+        <form id="section-form" onSubmit={handleSectionSubmit} noValidate>
+          <div className="form-group">
+            <label htmlFor="sec-name" className="label">Milestone Name <span className="text-red-500">*</span></label>
+            <input id="sec-name" required type="text" value={sectionForm.name}
+              onChange={(e) => setSectionForm({ ...sectionForm, name: e.target.value })}
+              className="input" placeholder="e.g. Contentverse Installation" />
           </div>
-        </div>
-      )}
+          <div className="form-group">
+            <label htmlFor="sec-weight" className="label">Total Weight (%) <span className="text-red-500">*</span></label>
+            <input id="sec-weight" required type="number" step="0.1" min="0" max="100"
+              value={sectionForm.weight}
+              onChange={(e) => setSectionForm({ ...sectionForm, weight: parseFloat(e.target.value) || 0 })}
+              className="input" />
+          </div>
+        </form>
+      </Modal>
 
       {/* Task Modal */}
-      {isTaskModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
-          <div style={{ background: 'white', borderRadius: '12px', width: '100%', maxWidth: '450px', padding: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>{editingTask ? 'Edit Sub-task' : 'Add Sub-task'}</h2>
-            <form onSubmit={handleTaskSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Task Name</label>
-                <input required type="text" value={taskFormData.task_name} onChange={e => setTaskFormData({...taskFormData, task_name: e.target.value})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem', fontWeight: 600 }}>Task Weight (%)</label>
-                <p style={{ margin: '0 0 0.5rem', fontSize: '0.7rem', color: '#6b7280' }}>This is the percentage contribution to the TOTAL project.</p>
-                <input required type="number" step="0.1" value={taskFormData.weight} onChange={e => setTaskFormData({...taskFormData, weight: parseFloat(e.target.value)})} style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button type="button" onClick={() => setIsTaskModalOpen(false)} style={{ padding: '0.5rem 1rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>{editingTask ? 'Update' : 'Add Task'}</button>
-              </div>
-            </form>
+      <Modal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)}
+        title={editingTask ? 'Edit Sub-task' : 'Add Sub-task'}
+        footer={
+          <>
+            <button onClick={() => setIsTaskModalOpen(false)} className="btn-secondary">Cancel</button>
+            <button form="task-form" type="submit" disabled={isSubmitting} className="btn-primary">
+              {isSubmitting ? 'Saving…' : editingTask ? 'Update' : 'Add Task'}
+            </button>
+          </>
+        }
+      >
+        <form id="task-form" onSubmit={handleTaskSubmit} noValidate>
+          <div className="form-group">
+            <label htmlFor="task-name" className="label">Task Name <span className="text-red-500">*</span></label>
+            <input id="task-name" required type="text" value={taskForm.task_name}
+              onChange={(e) => setTaskForm({ ...taskForm, task_name: e.target.value })}
+              className="input" />
           </div>
-        </div>
-      )}
+          <div className="form-group">
+            <label htmlFor="task-weight" className="label">Task Weight (%) <span className="text-red-500">*</span></label>
+            <p className="text-xs text-gray-500 mb-1">Percentage contribution to the total project.</p>
+            <input id="task-weight" required type="number" step="0.1" min="0"
+              value={taskForm.weight}
+              onChange={(e) => setTaskForm({ ...taskForm, weight: parseFloat(e.target.value) || 0 })}
+              className="input" />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
