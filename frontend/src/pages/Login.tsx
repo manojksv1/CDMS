@@ -14,6 +14,15 @@ const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  // Client-side validation
+  const usernameError = username.length > 0 && username.trim().length === 0
+    ? 'Username cannot be blank'
+    : '';
+  const passwordError = password.length > 0 && password.trim().length === 0
+    ? 'Password cannot be blank'
+    : '';
+  const canSubmit = username.trim().length > 0 && password.trim().length > 0;
+
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
@@ -34,6 +43,7 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmit) return;
     setError('');
     setIsLoading(true);
     try {
@@ -164,10 +174,14 @@ const Login: React.FC = () => {
                     placeholder="Enter your username"
                     required
                     autoComplete="username"
-                    className="input pl-9"
+                    className={`input pl-9 ${usernameError ? 'border-red-400 focus:ring-red-400' : ''}`}
                     aria-required="true"
+                    aria-describedby={usernameError ? 'username-error' : undefined}
                   />
                 </div>
+                {usernameError && (
+                  <p id="username-error" className="text-xs text-red-500 mt-1">{usernameError}</p>
+                )}
               </div>
 
               <div className="form-group">
@@ -182,8 +196,9 @@ const Login: React.FC = () => {
                     placeholder="Enter your password"
                     required
                     autoComplete="current-password"
-                    className="input pl-9 pr-10"
+                    className={`input pl-9 pr-10 ${passwordError ? 'border-red-400 focus:ring-red-400' : ''}`}
                     aria-required="true"
+                    aria-describedby={passwordError ? 'password-error' : undefined}
                   />
                   <button
                     type="button"
@@ -194,12 +209,16 @@ const Login: React.FC = () => {
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {passwordError && (
+                  <p id="password-error" className="text-xs text-red-500 mt-1">{passwordError}</p>
+                )}
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !canSubmit}
                 className="btn-primary w-full justify-center mt-2 py-2.5"
+                title={!canSubmit ? 'Please enter your username and password' : undefined}
               >
                 {isLoading ? (
                   <>
