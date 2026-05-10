@@ -15,6 +15,6 @@ def configure_logging() -> None:
     )
 
     # Quieten noisy third-party loggers
-    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)   # show all API requests
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("passlib").setLevel(logging.WARNING)
