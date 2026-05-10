@@ -104,43 +104,39 @@ const Layout: React.FC = () => {
           )}
         </nav>
 
-        {/* User footer */}
-        <div className="px-3 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3 px-2 py-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {user?.name?.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-gray-400 text-xs">{user?.role}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-gray-400 hover:text-white transition-colors p-1 rounded"
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
+        {/* User footer — removed, user info moved to top header */}
       </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0">
           <h1 className="text-lg font-semibold text-gray-900">
             {getPageTitle(location.pathname)}
           </h1>
-          <div className="flex items-center gap-2">
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-medium">
-              {user?.software_access === 'BOTH'
-                ? 'Full Access'
-                : user?.software_access === 'INSTALLATION'
-                ? 'Installation'
-                : 'Implementation'}
-            </span>
+          <div className="flex items-center gap-3">
+
+            {/* User info */}
+            <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                {user?.name?.charAt(0).toUpperCase()}
+              </div>
+              <div className="hidden sm:block leading-tight">
+                <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
+                <p className="text-xs text-gray-400">{user?.role}</p>
+              </div>
+            </div>
+
+            {/* Logout */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 border border-gray-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
           </div>
         </header>
 
