@@ -1,20 +1,27 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { useNotificationStore } from '../store/notificationStore';
-import { Plus, Trash2, Database, Upload, Download, Edit2, ShieldAlert } from 'lucide-react';
+import { Plus, Trash2, Database, Upload, Download, Edit2, ShieldAlert, Globe } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import Modal from '../components/Modal';
 import { TableSkeleton } from '../components/Skeleton';
 import type { User, UserCreate, UserRole, SoftwareAccess } from '../types/api';
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 const TIMEZONES = [
-  { value: 'UTC',            label: 'UTC (GMT)' },
-  { value: 'Asia/Kolkata',   label: 'IST (India — GMT+5:30)' },
-  { value: 'America/New_York', label: 'EST (New York — GMT-5)' },
-  { value: 'Europe/London',  label: 'GMT/BST (London)' },
-  { value: 'Asia/Dubai',     label: 'GST (Dubai — GMT+4)' },
-  { value: 'Singapore',      label: 'SGT (Singapore — GMT+8)' },
+  { value: 'UTC',                 label: 'UTC (GMT)' },
+  { value: 'Asia/Kolkata',        label: 'IST (India — GMT+5:30)' },
+  { value: 'America/New_York',    label: 'EST (New York — GMT-5)' },
+  { value: 'America/Los_Angeles', label: 'PST (Los Angeles — GMT-8)' },
+  { value: 'Europe/London',       label: 'GMT/BST (London)' },
+  { value: 'Europe/Paris',        label: 'CET (Paris — GMT+1)' },
+  { value: 'Asia/Dubai',          label: 'GST (Dubai — GMT+4)' },
+  { value: 'Asia/Singapore',      label: 'SGT (Singapore — GMT+8)' },
+  { value: 'Australia/Sydney',    label: 'AEST (Sydney — GMT+10)' },
 ];
 
 const ROLE_HINT: Record<UserRole, string> = {
@@ -23,7 +30,12 @@ const ROLE_HINT: Record<UserRole, string> = {
   ADMIN:    'Full access. Can manage users, clients, and all tasks.',
 };
 
-const EMPTY_FORM = { name: '', role: 'ENGINEER' as UserRole, software_access: 'BOTH' as SoftwareAccess, password: '', timezone: 'UTC' };
+const EMPTY_FORM = {
+  name: '',
+  role: 'ENGINEER' as UserRole,
+  software_access: 'BOTH' as SoftwareAccess,
+  password: '',
+};
 
 interface ConfirmConfig {
   isOpen: boolean;
@@ -34,6 +46,9 @@ interface ConfirmConfig {
   confirmText: string;
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,25 +65,34 @@ const Users: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.user);
   const showNotification = useNotificationStore((s) => s.show);
+  const { appTimezone, setAppTimezone } = useSettingsStore();
+  const [pendingTimezone, setPendingTimezone] = useState(appTimezone);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep pendingTimezone in sync if appTimezone changes externally
+  useEffect(() => { setPendingTimezone(appTimezone); }, [appTimezone]);
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await api.get<User[]>('/users/');
       setUsers(res.data);
-    } catch { /* handled */ } finally { setIsLoading(false); }
+    } catch { /* handled by interceptor */ } finally { setIsLoading(false); }
   }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
       const payload: UserCreate = {
         ...formData,
-        software_access: (formData.role === 'ADMIN' || formData.role === 'ENGINEER') ? 'BOTH' : formData.software_access,
+        software_access: (formData.role === 'ADMIN' || formData.role === 'ENGINEER')
+          ? 'BOTH' : formData.software_access,
       };
       await api.post('/users/', payload);
       showNotification('User created!', 'success');
@@ -86,8 +110,8 @@ const Users: React.FC = () => {
       const payload: Record<string, unknown> = {
         name: editFormData.name,
         role: editFormData.role,
-        software_access: (editFormData.role === 'ADMIN' || editFormData.role === 'ENGINEER') ? 'BOTH' : editFormData.software_access,
-        timezone: editFormData.timezone,
+        software_access: (editFormData.role === 'ADMIN' || editFormData.role === 'ENGINEER')
+          ? 'BOTH' : editFormData.software_access,
       };
       if (editFormData.password) payload.password = editFormData.password;
       const res = await api.patch<User>(`/users/${selectedUser.id}`, payload);
@@ -102,8 +126,19 @@ const Users: React.FC = () => {
 
   const openEditModal = (user: User) => {
     setSelectedUser(user);
-    setEditFormData({ name: user.name, role: user.role, software_access: user.software_access, password: '', timezone: user.timezone });
+    setEditFormData({
+      name: user.name,
+      role: user.role,
+      software_access: user.software_access,
+      password: '',
+    });
     setIsEditModalOpen(true);
+  };
+
+  const handleSaveTimezone = () => {
+    // Update the store — this immediately affects all date displays in the app
+    setAppTimezone(pendingTimezone);
+    showNotification(`App timezone set to ${pendingTimezone}`, 'success');
   };
 
   const handleDelete = (id: number, name: string) => {
@@ -173,25 +208,47 @@ const Users: React.FC = () => {
   };
 
   const roleBadge = (role: UserRole) => {
-    const map: Record<UserRole, string> = { ADMIN: 'badge-red', MANAGER: 'badge-blue', ENGINEER: 'badge-green' };
+    const map: Record<UserRole, string> = {
+      ADMIN: 'badge-red', MANAGER: 'badge-blue', ENGINEER: 'badge-green',
+    };
     return map[role];
   };
 
-  const UserForm = ({ data, setData, isEdit = false }: {
+  // ---------------------------------------------------------------------------
+  // Reusable user form (no timezone — that's app-level now)
+  // ---------------------------------------------------------------------------
+  const UserForm = ({
+    data,
+    setData,
+    isEdit = false,
+  }: {
     data: typeof EMPTY_FORM;
     setData: React.Dispatch<React.SetStateAction<typeof EMPTY_FORM>>;
     isEdit?: boolean;
   }) => (
     <div className="space-y-4">
       <div className="form-group">
-        <label htmlFor={`${isEdit ? 'edit' : 'add'}-name`} className="label">Username <span className="text-red-500">*</span></label>
-        <input id={`${isEdit ? 'edit' : 'add'}-name`} required type="text" value={data.name}
-          onChange={(e) => setData({ ...data, name: e.target.value })} className="input" />
+        <label htmlFor={`${isEdit ? 'edit' : 'add'}-name`} className="label">
+          Username <span className="text-red-500">*</span>
+        </label>
+        <input
+          id={`${isEdit ? 'edit' : 'add'}-name`}
+          required type="text" value={data.name}
+          onChange={(e) => setData({ ...data, name: e.target.value })}
+          className="input"
+        />
       </div>
+
       <div className="form-group">
-        <label htmlFor={`${isEdit ? 'edit' : 'add'}-role`} className="label">Role <span className="text-red-500">*</span></label>
-        <select id={`${isEdit ? 'edit' : 'add'}-role`} required value={data.role}
-          onChange={(e) => setData({ ...data, role: e.target.value as UserRole })} className="input">
+        <label htmlFor={`${isEdit ? 'edit' : 'add'}-role`} className="label">
+          Role <span className="text-red-500">*</span>
+        </label>
+        <select
+          id={`${isEdit ? 'edit' : 'add'}-role`}
+          required value={data.role}
+          onChange={(e) => setData({ ...data, role: e.target.value as UserRole })}
+          className="input"
+        >
           <option value="ENGINEER">Engineer</option>
           <option value="MANAGER">Manager</option>
           <option value="ADMIN">Admin</option>
@@ -200,39 +257,51 @@ const Users: React.FC = () => {
           {ROLE_HINT[data.role]}
         </p>
       </div>
+
       <div className="form-group">
-        <label htmlFor={`${isEdit ? 'edit' : 'add'}-access`} className="label">Software Access</label>
-        <select id={`${isEdit ? 'edit' : 'add'}-access`}
+        <label htmlFor={`${isEdit ? 'edit' : 'add'}-access`} className="label">
+          Software Access
+        </label>
+        <select
+          id={`${isEdit ? 'edit' : 'add'}-access`}
           disabled={data.role === 'ADMIN' || data.role === 'ENGINEER'}
           value={(data.role === 'ADMIN' || data.role === 'ENGINEER') ? 'BOTH' : data.software_access}
           onChange={(e) => setData({ ...data, software_access: e.target.value as SoftwareAccess })}
-          className="input disabled:bg-gray-100">
+          className="input disabled:bg-gray-100"
+        >
           <option value="BOTH">All Software (Both)</option>
           <option value="INSTALLATION">Installation Tracker Only</option>
           <option value="IMPLEMENTATION">Implementation Tracker Only</option>
         </select>
       </div>
-      <div className="form-group">
-        <label htmlFor={`${isEdit ? 'edit' : 'add'}-tz`} className="label">Timezone</label>
-        <select id={`${isEdit ? 'edit' : 'add'}-tz`} value={data.timezone}
-          onChange={(e) => setData({ ...data, timezone: e.target.value })} className="input">
-          {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
-        </select>
-      </div>
+
       <div className="form-group">
         <label htmlFor={`${isEdit ? 'edit' : 'add'}-pw`} className="label">
-          {isEdit ? 'New Password (leave blank to keep current)' : <>Password <span className="text-red-500">*</span></>}
+          {isEdit
+            ? 'New Password (leave blank to keep current)'
+            : <> Password <span className="text-red-500">*</span></>}
         </label>
-        <input id={`${isEdit ? 'edit' : 'add'}-pw`} type="password" required={!isEdit}
-          value={data.password} onChange={(e) => setData({ ...data, password: e.target.value })}
-          className="input" autoComplete={isEdit ? 'new-password' : 'new-password'} />
+        <input
+          id={`${isEdit ? 'edit' : 'add'}-pw`}
+          type="password" required={!isEdit}
+          value={data.password}
+          onChange={(e) => setData({ ...data, password: e.target.value })}
+          className="input"
+          autoComplete="new-password"
+        />
       </div>
     </div>
   );
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div>
-      <ConfirmModal {...confirmConfig} onClose={() => setConfirmConfig((p) => ({ ...p, isOpen: false }))} />
+      <ConfirmModal
+        {...confirmConfig}
+        onClose={() => setConfirmConfig((p) => ({ ...p, isOpen: false }))}
+      />
 
       <div className="page-header">
         <h1 className="page-title">User Management</h1>
@@ -243,6 +312,7 @@ const Users: React.FC = () => {
         )}
       </div>
 
+      {/* Users table */}
       {isLoading ? (
         <TableSkeleton rows={4} cols={5} />
       ) : (
@@ -262,28 +332,50 @@ const Users: React.FC = () => {
                 <tr key={u.id}>
                   <td className="text-gray-400 font-mono text-xs">#{u.id}</td>
                   <td className="font-semibold text-gray-900">
-                    {u.name} {currentUser?.id === u.id && <span className="text-xs text-gray-400 font-normal">(You)</span>}
+                    {u.name}{' '}
+                    {currentUser?.id === u.id && (
+                      <span className="text-xs text-gray-400 font-normal">(You)</span>
+                    )}
                   </td>
                   <td><span className={roleBadge(u.role)}>{u.role}</span></td>
                   <td>
                     <span className="badge badge-gray text-xs">
-                      {u.software_access === 'BOTH' ? 'All Software' : u.software_access === 'INSTALLATION' ? 'Installation' : 'Implementation'}
+                      {u.software_access === 'BOTH'
+                        ? 'All Software'
+                        : u.software_access === 'INSTALLATION'
+                        ? 'Installation'
+                        : 'Implementation'}
                     </span>
                   </td>
                   <td>
                     <div className="flex items-center justify-end gap-2">
                       {currentUser?.role === 'ADMIN' && (
                         <>
-                          <button onClick={() => openEditModal(u)} className="btn-ghost" aria-label={`Edit ${u.name}`} title="Edit user">
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="btn-ghost"
+                            aria-label={`Edit ${u.name}`}
+                            title="Edit user"
+                          >
                             <Edit2 size={15} />
                           </button>
                           {currentUser.id !== u.id && (
-                            <button onClick={() => handleLogoutAll(u.id, u.name)} className="btn-ghost text-orange-600 hover:bg-orange-50" aria-label={`Revoke sessions for ${u.name}`} title="Revoke all sessions">
+                            <button
+                              onClick={() => handleLogoutAll(u.id, u.name)}
+                              className="btn-ghost text-orange-600 hover:bg-orange-50"
+                              aria-label={`Revoke sessions for ${u.name}`}
+                              title="Revoke all sessions"
+                            >
                               <ShieldAlert size={15} />
                             </button>
                           )}
                           {currentUser.id !== u.id && (
-                            <button onClick={() => handleDelete(u.id, u.name)} className="btn-ghost text-red-600 hover:bg-red-50" aria-label={`Delete ${u.name}`} title="Delete user">
+                            <button
+                              onClick={() => handleDelete(u.id, u.name)}
+                              className="btn-ghost text-red-600 hover:bg-red-50"
+                              aria-label={`Delete ${u.name}`}
+                              title="Delete user"
+                            >
                               <Trash2 size={15} />
                             </button>
                           )}
@@ -294,46 +386,112 @@ const Users: React.FC = () => {
                 </tr>
               ))}
               {users.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-gray-400 py-8">No users found.</td></tr>
+                <tr>
+                  <td colSpan={5} className="text-center text-gray-400 py-8">
+                    No users found.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Database Maintenance */}
+      {/* Admin-only sections */}
       {currentUser?.role === 'ADMIN' && (
-        <section aria-labelledby="db-heading" className="border-t border-gray-200 pt-8">
-          <div className="flex items-center gap-3 mb-5">
-            <Database size={22} className="text-gray-700" aria-hidden="true" />
-            <h2 id="db-heading" className="text-xl font-bold text-gray-900">Database Maintenance</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="font-semibold mb-1">Full Database Backup</h3>
-              <p className="text-sm text-gray-500 mb-4">Download a complete SQL snapshot. Use for migrations or offline backups.</p>
-              <button onClick={handleBackup} disabled={isMaintenance} className="btn-dark">
-                <Download size={16} /> {isMaintenance ? 'Processing…' : 'Download Backup (.sql)'}
-              </button>
+        <>
+          {/* App Settings */}
+          <section aria-labelledby="settings-heading" className="border-t border-gray-200 pt-8 mb-8">
+            <div className="flex items-center gap-3 mb-5">
+              <Globe size={22} className="text-gray-700" aria-hidden="true" />
+              <h2 id="settings-heading" className="text-xl font-bold text-gray-900">
+                Application Settings
+              </h2>
             </div>
-            <div className="card p-5">
-              <h3 className="font-semibold mb-1">Restore Database</h3>
+            <div className="card p-5 max-w-md">
+              <h3 className="font-semibold mb-1">Display Timezone</h3>
               <p className="text-sm text-gray-500 mb-4">
-                Upload a SQL backup to overwrite the current database.{' '}
-                <span className="text-red-600 font-semibold">This is irreversible.</span>
+                All dates and times across the app will be displayed in this timezone.
+                Currently: <span className="font-semibold text-gray-700">{appTimezone}</span>
               </p>
-              <input ref={fileInputRef} type="file" accept=".sql" onChange={handleRestore} className="hidden" aria-label="Upload SQL backup file" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isMaintenance}
-                className="btn bg-white text-red-600 border border-red-300 hover:bg-red-50 focus:ring-red-400">
-                <Upload size={16} /> {isMaintenance ? 'Processing…' : 'Upload & Restore (.sql)'}
-              </button>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label htmlFor="app-timezone" className="label">Timezone</label>
+                  <select
+                    id="app-timezone"
+                    value={pendingTimezone}
+                    onChange={(e) => setPendingTimezone(e.target.value)}
+                    className="input"
+                    aria-label="Select application timezone"
+                  >
+                    {TIMEZONES.map((tz) => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={handleSaveTimezone}
+                  disabled={pendingTimezone === appTimezone}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  Apply
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          {/* Database Maintenance */}
+          <section aria-labelledby="db-heading" className="border-t border-gray-200 pt-8">
+            <div className="flex items-center gap-3 mb-5">
+              <Database size={22} className="text-gray-700" aria-hidden="true" />
+              <h2 id="db-heading" className="text-xl font-bold text-gray-900">
+                Database Maintenance
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="card p-5">
+                <h3 className="font-semibold mb-1">Full Database Backup</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Download a complete SQL snapshot. Use for migrations or offline backups.
+                </p>
+                <button onClick={handleBackup} disabled={isMaintenance} className="btn-dark">
+                  <Download size={16} />
+                  {isMaintenance ? 'Processing…' : 'Download Backup (.sql)'}
+                </button>
+              </div>
+              <div className="card p-5">
+                <h3 className="font-semibold mb-1">Restore Database</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Upload a SQL backup to overwrite the current database.{' '}
+                  <span className="text-red-600 font-semibold">This is irreversible.</span>
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".sql"
+                  onChange={handleRestore}
+                  className="hidden"
+                  aria-label="Upload SQL backup file"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isMaintenance}
+                  className="btn bg-white text-red-600 border border-red-300 hover:bg-red-50 focus:ring-red-400"
+                >
+                  <Upload size={16} />
+                  {isMaintenance ? 'Processing…' : 'Upload & Restore (.sql)'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </>
       )}
 
-      {/* Add Modal */}
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Add New User"
+      {/* Add User Modal */}
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Add New User"
         footer={
           <>
             <button onClick={() => setIsAddModalOpen(false)} className="btn-secondary">Cancel</button>
@@ -348,8 +506,10 @@ const Users: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Edit Modal */}
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)}
+      {/* Edit User Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
         title={`Edit User: ${selectedUser?.name ?? ''}`}
         footer={
           <>

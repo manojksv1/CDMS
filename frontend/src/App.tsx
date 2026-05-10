@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { useSettingsStore } from './store/settingsStore';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -11,21 +12,26 @@ import MilestoneTemplate from './pages/MilestoneTemplate';
 import Users from './pages/Users';
 import ErrorBoundary from './components/ErrorBoundary';
 import api from './api';
-import type { AuthUser } from './types/api';
+import type { AuthUser, AppSettings } from './types/api';
 
 // ---------------------------------------------------------------------------
-// Auth initialisation — verify session via /users/me on every app load.
-// This replaces the old localStorage trust pattern.
+// Auth + app settings initialisation on every app load
 // ---------------------------------------------------------------------------
 function AuthInitialiser({ children }: { children: React.ReactNode }) {
   const setInitialised = useAuthStore((s) => s.setInitialised);
+  const setAppTimezone = useSettingsStore((s) => s.setAppTimezone);
 
   useEffect(() => {
     api
       .get<AuthUser>('/users/me')
-      .then((res) => setInitialised(res.data))
+      .then((res) => {
+        setInitialised(res.data);
+        // Fetch app-level settings after auth succeeds
+        return api.get<AppSettings>('/system/settings');
+      })
+      .then((res) => setAppTimezone(res.data.app_timezone))
       .catch(() => setInitialised(null));
-  }, [setInitialised]);
+  }, [setInitialised, setAppTimezone]);
 
   return <>{children}</>;
 }

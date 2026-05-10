@@ -87,7 +87,6 @@ def _create_user(db, name: str, role: UserRole, password: str = "testpass123") -
         role=role,
         software_access=SoftwareAccess.BOTH,
         hashed_password=get_password_hash(password),
-        timezone="UTC",
     )
     db.add(user)
     db.commit()

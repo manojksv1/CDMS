@@ -57,7 +57,6 @@ class TestBusinessRuleErrors:
                 "role": "ENGINEER",
                 "software_access": "BOTH",
                 "password": "testpass123",
-                "timezone": "UTC",
             },
         )
         assert resp.status_code == 409

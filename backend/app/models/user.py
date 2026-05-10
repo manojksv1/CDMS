@@ -29,4 +29,3 @@ class User(Base):
     )
     hashed_password = Column(String, nullable=False)
     last_logout = Column(DateTime(timezone=True), nullable=True)
-    timezone = Column(String, default="UTC", nullable=False)

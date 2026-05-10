@@ -57,21 +57,24 @@ def upgrade() -> None:
             ALTER COLUMN date SET NOT NULL,
             ALTER COLUMN created_at TYPE TIMESTAMPTZ
                 USING COALESCE(created_at, NOW()) AT TIME ZONE 'UTC',
-            ALTER COLUMN created_at SET NOT NULL
+            ALTER COLUMN created_at SET NOT NULL,
+            ALTER COLUMN created_at SET DEFAULT NOW()
     """)
 
     op.execute("""
         ALTER TABLE implementation_tasks
             ALTER COLUMN created_at TYPE TIMESTAMPTZ
                 USING COALESCE(created_at, NOW()) AT TIME ZONE 'UTC',
-            ALTER COLUMN created_at SET NOT NULL
+            ALTER COLUMN created_at SET NOT NULL,
+            ALTER COLUMN created_at SET DEFAULT NOW()
     """)
 
     op.execute("""
         ALTER TABLE implementations
             ALTER COLUMN created_at TYPE TIMESTAMPTZ
                 USING COALESCE(created_at, NOW()) AT TIME ZONE 'UTC',
-            ALTER COLUMN created_at SET NOT NULL
+            ALTER COLUMN created_at SET NOT NULL,
+            ALTER COLUMN created_at SET DEFAULT NOW()
     """)
 
 

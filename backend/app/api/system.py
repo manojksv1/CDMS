@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 
-from app.api.deps import get_current_active_admin
+from app.api.deps import get_current_active_admin, get_current_user
 from app.core.config import settings
 from app.core.exceptions import AppError
 
@@ -16,6 +16,14 @@ router = APIRouter()
 
 BACKUP_PATH = "/tmp/db_backup.sql"
 RESTORE_TEMP_PATH = "/tmp/restore_db_bg.sql"
+
+
+@router.get("/settings")
+def get_app_settings(current_user=Depends(get_current_user)):
+    """Return application-level settings readable by all authenticated users."""
+    return {
+        "app_timezone": settings.APP_TIMEZONE,
+    }
 
 
 def _parse_db_url(database_url: str) -> dict:

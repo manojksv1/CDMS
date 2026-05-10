@@ -11,7 +11,6 @@ class TestCreateUser:
                 "role": "ENGINEER",
                 "software_access": "BOTH",
                 "password": "securepassword123",
-                "timezone": "UTC",
             },
         )
         assert resp.status_code == 201
@@ -24,11 +23,10 @@ class TestCreateUser:
         resp = admin_client.post(
             "/api/users/",
             json={
-                "name": "admin",  # already exists
+                "name": "admin",
                 "role": "ENGINEER",
                 "software_access": "BOTH",
                 "password": "securepassword123",
-                "timezone": "UTC",
             },
         )
         assert resp.status_code == 409
@@ -41,7 +39,6 @@ class TestCreateUser:
                 "role": "ADMIN",
                 "software_access": "BOTH",
                 "password": "securepassword123",
-                "timezone": "UTC",
             },
         )
         assert resp.status_code == 403
@@ -64,10 +61,10 @@ class TestUpdateUser:
     def test_admin_can_update_user(self, admin_client, engineer_user):
         resp = admin_client.patch(
             f"/api/users/{engineer_user.id}",
-            json={"timezone": "Asia/Kolkata"},
+            json={"name": "updated_engineer"},
         )
         assert resp.status_code == 200
-        assert resp.json()["timezone"] == "Asia/Kolkata"
+        assert resp.json()["name"] == "updated_engineer"
 
     def test_cannot_demote_last_admin(self, admin_client, admin_user):
         resp = admin_client.patch(
@@ -79,7 +76,7 @@ class TestUpdateUser:
     def test_non_admin_cannot_update_user(self, engineer_client, manager_user):
         resp = engineer_client.patch(
             f"/api/users/{manager_user.id}",
-            json={"timezone": "UTC"},
+            json={"name": "hacked"},
         )
         assert resp.status_code == 403
 

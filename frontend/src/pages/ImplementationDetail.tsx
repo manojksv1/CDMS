@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { useNotificationStore } from '../store/notificationStore';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import {
   ArrowLeft, Settings, Plus, CheckCircle2, Circle,
   Target, User, X, MessageSquare, ListChecks,
@@ -61,6 +62,7 @@ const ImplementationDetail: React.FC = () => {
 
   const showNotification = useNotificationStore((s) => s.show);
   const navigate = useNavigate();
+  const appTimezone = useSettingsStore((s) => s.appTimezone);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -221,10 +223,9 @@ const ImplementationDetail: React.FC = () => {
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'N/A';
     const utc = dateStr.endsWith('Z') ? dateStr : `${dateStr}Z`;
-    const tz = currentUser?.timezone ?? 'UTC';
     try {
       return new Intl.DateTimeFormat('en-US', {
-        timeZone: tz, weekday: 'short', month: 'short', day: 'numeric',
+        timeZone: appTimezone, weekday: 'short', month: 'short', day: 'numeric',
         year: 'numeric', hour: '2-digit', minute: '2-digit',
       }).format(new Date(utc));
     } catch {

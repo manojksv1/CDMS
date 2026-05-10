@@ -31,7 +31,6 @@ def create_user(db: Session, user: UserCreate) -> User:
         name=user.name,
         role=user.role,
         software_access=user.software_access,
-        timezone=user.timezone,
         hashed_password=get_password_hash(user.password),
     )
     db.add(db_user)

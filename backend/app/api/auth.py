@@ -64,7 +64,7 @@ def login(
         raise UnauthorizedError("Incorrect username or password")
 
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role, "timezone": user.timezone},
+        data={"sub": str(user.id), "role": user.role},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     refresh_token = create_refresh_token(
@@ -131,7 +131,7 @@ def refresh_token_endpoint(
             raise UnauthorizedError("Session has been invalidated")
 
     access_token = create_access_token(
-        data={"sub": str(user.id), "role": user.role, "timezone": user.timezone},
+        data={"sub": str(user.id), "role": user.role},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     response.set_cookie(

@@ -16,7 +16,6 @@ export interface AuthUser {
   name: string;
   role: UserRole;
   software_access: SoftwareAccess;
-  timezone: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -28,7 +27,6 @@ export interface User {
   name: string;
   role: UserRole;
   software_access: SoftwareAccess;
-  timezone: string;
 }
 
 export interface UserCreate {
@@ -36,7 +34,6 @@ export interface UserCreate {
   role: UserRole;
   software_access: SoftwareAccess;
   password: string;
-  timezone: string;
 }
 
 export interface UserUpdate {
@@ -44,7 +41,6 @@ export interface UserUpdate {
   role?: UserRole;
   software_access?: SoftwareAccess;
   password?: string;
-  timezone?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +277,14 @@ export interface ChatRequest {
   summary_type: 'implementation' | 'installation';
   client_id?: number | null;
   history?: ChatMessage[];
+}
+
+// ---------------------------------------------------------------------------
+// App Settings
+// ---------------------------------------------------------------------------
+
+export interface AppSettings {
+  app_timezone: string;
 }
 
 // ---------------------------------------------------------------------------

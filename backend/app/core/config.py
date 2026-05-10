@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-3.1-flash-lite-preview"
 
+    # --- Application ---
+    APP_TIMEZONE: str = "Asia/Kolkata"
+
     @field_validator("SECRET_KEY")
     @classmethod
     def secret_key_must_be_strong(cls, v: str) -> str:
