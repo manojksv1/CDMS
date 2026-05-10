@@ -44,7 +44,7 @@ class ImplementationTask(ImplementationTaskBase):
     id: int
     implementation_id: int
     completed_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -69,7 +69,7 @@ class ImplementationLog(ImplementationLogBase):
     id: int
     implementation_id: int
     user_id: Optional[int] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     user_name: Optional[str] = None
 
     class Config:
@@ -122,7 +122,7 @@ class Implementation(ImplementationBase):
     id: int
     current_percentage: float
     assigned_user_name: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

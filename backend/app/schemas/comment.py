@@ -14,7 +14,7 @@ class CommentCreate(CommentBase):
 class CommentResponse(CommentBase):
     id: int
     user_id: Optional[int]
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
     user: Optional[UserResponse] = None
     replies: List['CommentResponse'] = []
 

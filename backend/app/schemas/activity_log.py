@@ -13,7 +13,7 @@ class ActivityLogCreate(ActivityLogBase):
 class ActivityLogResponse(ActivityLogBase):
     id: int
     changed_by: Optional[int] = None
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
 
     class Config:
         from_attributes = True
